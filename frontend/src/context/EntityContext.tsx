@@ -1,0 +1,337 @@
+/**
+ * ジェネリックEntityContext。
+ * 全エンティティタイプを一つのProviderで管理し、
+ * エンティティ間参照を entity.{type} 形式で解決する。
+ */
+import React, {
+  createContext,
+  useContext,
+  useReducer,
+  useCallback,
+  useMemo,
+  ReactNode,
+} from "react";
+import { entityApi, EntityType, FlowEntity } from "../api/entities";
+
+// ---- 型定義 ----
+
+type EntityMap = Record<number, FlowEntity>;
+type StoreState = Record<EntityType, EntityMap>;
+
+interface HistoryEntry {
+  type: EntityType;
+  id: number;
+  before: FlowEntity | undefined;
+  after: FlowEntity | undefined;
+}
+
+interface EntityStore {
+  state: StoreState;
+  past: HistoryEntry[][];
+  future: HistoryEntry[][];
+  pendingDiffs: {
+    type: EntityType;
+    id: number | null;
+    patch: Partial<FlowEntity>;
+    action: string;
+  }[];
+}
+
+type Action =
+  | { kind: "LOAD"; entityType: EntityType; entities: FlowEntity[] }
+  | {
+      kind: "PATCH";
+      entityType: EntityType;
+      id: number;
+      patch: Partial<FlowEntity>;
+    }
+  | { kind: "CREATE"; entityType: EntityType; entity: FlowEntity }
+  | { kind: "DELETE"; entityType: EntityType; id: number }
+  | { kind: "UNDO" }
+  | { kind: "REDO" }
+  | { kind: "CLEAR_PENDING" };
+
+const ENTITY_TYPES: EntityType[] = [
+  "HumanUser",
+  "Project",
+  "Asset",
+  "Task",
+  "Phase",
+  "Step",
+  "Estimation",
+];
+
+function emptyState(): StoreState {
+  return Object.fromEntries(ENTITY_TYPES.map((t) => [t, {}])) as StoreState;
+}
+
+function applyHistory(
+  state: StoreState,
+  entry: HistoryEntry,
+  direction: "undo" | "redo",
+): StoreState {
+  const map = { ...state[entry.type] };
+  const target = direction === "undo" ? entry.before : entry.after;
+  if (target === undefined) {
+    delete map[entry.id];
+  } else {
+    map[entry.id] = target;
+  }
+  return { ...state, [entry.type]: map };
+}
+
+function reducer(store: EntityStore, action: Action): EntityStore {
+  switch (action.kind) {
+    case "LOAD": {
+      const map: EntityMap = {};
+      for (const e of action.entities) map[e.id] = e;
+      return { ...store, state: { ...store.state, [action.entityType]: map } };
+    }
+    case "PATCH": {
+      const before = store.state[action.entityType][action.id];
+      const after = { ...before, ...action.patch };
+      const entry: HistoryEntry = {
+        type: action.entityType,
+        id: action.id,
+        before,
+        after,
+      };
+      return {
+        ...store,
+        state: {
+          ...store.state,
+          [action.entityType]: {
+            ...store.state[action.entityType],
+            [action.id]: after,
+          },
+        },
+        past: [...store.past, [entry]],
+        future: [],
+        pendingDiffs: [
+          ...store.pendingDiffs,
+          {
+            type: action.entityType,
+            id: action.id,
+            patch: action.patch,
+            action: "update",
+          },
+        ],
+      };
+    }
+    case "CREATE": {
+      const entry: HistoryEntry = {
+        type: action.entityType,
+        id: action.entity.id,
+        before: undefined,
+        after: action.entity,
+      };
+      return {
+        ...store,
+        state: {
+          ...store.state,
+          [action.entityType]: {
+            ...store.state[action.entityType],
+            [action.entity.id]: action.entity,
+          },
+        },
+        past: [...store.past, [entry]],
+        future: [],
+        pendingDiffs: [
+          ...store.pendingDiffs,
+          {
+            type: action.entityType,
+            id: null,
+            patch: action.entity,
+            action: "create",
+          },
+        ],
+      };
+    }
+    case "DELETE": {
+      const before = store.state[action.entityType][action.id];
+      const map = { ...store.state[action.entityType] };
+      delete map[action.id];
+      const entry: HistoryEntry = {
+        type: action.entityType,
+        id: action.id,
+        before,
+        after: undefined,
+      };
+      return {
+        ...store,
+        state: { ...store.state, [action.entityType]: map },
+        past: [...store.past, [entry]],
+        future: [],
+        pendingDiffs: [
+          ...store.pendingDiffs,
+          {
+            type: action.entityType,
+            id: action.id,
+            patch: {},
+            action: "delete",
+          },
+        ],
+      };
+    }
+    case "UNDO": {
+      if (store.past.length === 0) return store;
+      const entries = store.past[store.past.length - 1];
+      let newState = store.state;
+      for (const e of entries) newState = applyHistory(newState, e, "undo");
+      return {
+        ...store,
+        state: newState,
+        past: store.past.slice(0, -1),
+        future: [entries, ...store.future],
+      };
+    }
+    case "REDO": {
+      if (store.future.length === 0) return store;
+      const entries = store.future[0];
+      let newState = store.state;
+      for (const e of entries) newState = applyHistory(newState, e, "redo");
+      return {
+        ...store,
+        state: newState,
+        past: [...store.past, entries],
+        future: store.future.slice(1),
+      };
+    }
+    case "CLEAR_PENDING":
+      return { ...store, pendingDiffs: [] };
+    default:
+      return store;
+  }
+}
+
+// ---- Context ----
+
+interface EntityContextValue {
+  state: StoreState;
+  canUndo: boolean;
+  canRedo: boolean;
+  loadAll: () => Promise<void>;
+  load: (type: EntityType) => Promise<void>;
+  patch: (type: EntityType, id: number, data: Partial<FlowEntity>) => void;
+  create: (type: EntityType, data: Partial<FlowEntity>) => Promise<void>;
+  remove: (type: EntityType, id: number) => void;
+  undo: () => void;
+  redo: () => void;
+  commit: (type: EntityType) => Promise<void>;
+  /** エンティティ間参照解決: entity.{type} => FlowEntity | undefined */
+  resolve: (
+    ref: { type: EntityType; id: number } | null | undefined,
+  ) => FlowEntity | undefined;
+  getList: (type: EntityType) => FlowEntity[];
+}
+
+const EntityContext = createContext<EntityContextValue | null>(null);
+
+export function EntityProvider({ children }: { children: ReactNode }) {
+  const [store, dispatch] = useReducer(reducer, {
+    state: emptyState(),
+    past: [],
+    future: [],
+    pendingDiffs: [],
+  });
+
+  const load = useCallback(async (type: EntityType) => {
+    const entities = await entityApi.list(type);
+    dispatch({ kind: "LOAD", entityType: type, entities });
+  }, []);
+
+  const loadAll = useCallback(async () => {
+    await Promise.all(ENTITY_TYPES.map(load));
+  }, [load]);
+
+  const patch = useCallback(
+    (type: EntityType, id: number, data: Partial<FlowEntity>) => {
+      dispatch({ kind: "PATCH", entityType: type, id, patch: data });
+    },
+    [],
+  );
+
+  const create = useCallback(
+    async (type: EntityType, data: Partial<FlowEntity>) => {
+      const created = await entityApi.create(type, data);
+      dispatch({ kind: "CREATE", entityType: type, entity: created });
+    },
+    [],
+  );
+
+  const remove = useCallback((type: EntityType, id: number) => {
+    dispatch({ kind: "DELETE", entityType: type, id });
+  }, []);
+
+  const undo = useCallback(() => dispatch({ kind: "UNDO" }), []);
+  const redo = useCallback(() => dispatch({ kind: "REDO" }), []);
+
+  const commit = useCallback(
+    async (type: EntityType) => {
+      const diffs = store.pendingDiffs.filter((d) => d.type === type);
+      for (const d of diffs) {
+        if (d.action === "update" && d.id)
+          await entityApi.update(type, d.id, d.patch);
+        else if (d.action === "create") await entityApi.create(type, d.patch);
+        else if (d.action === "delete" && d.id)
+          await entityApi.delete(type, d.id);
+      }
+      dispatch({ kind: "CLEAR_PENDING" });
+    },
+    [store.pendingDiffs],
+  );
+
+  const resolve = useCallback(
+    (ref: { type: EntityType; id: number } | null | undefined) => {
+      if (!ref) return undefined;
+      return store.state[ref.type]?.[ref.id];
+    },
+    [store.state],
+  );
+
+  const getList = useCallback(
+    (type: EntityType) => Object.values(store.state[type]),
+    [store.state],
+  );
+
+  const value = useMemo<EntityContextValue>(
+    () => ({
+      state: store.state,
+      canUndo: store.past.length > 0,
+      canRedo: store.future.length > 0,
+      loadAll,
+      load,
+      patch,
+      create,
+      remove,
+      undo,
+      redo,
+      commit,
+      resolve,
+      getList,
+    }),
+    [
+      store,
+      loadAll,
+      load,
+      patch,
+      create,
+      remove,
+      undo,
+      redo,
+      commit,
+      resolve,
+      getList,
+    ],
+  );
+
+  return (
+    <EntityContext.Provider value={value}>{children}</EntityContext.Provider>
+  );
+}
+
+export function useEntities(): EntityContextValue {
+  const ctx = useContext(EntityContext);
+  if (!ctx) throw new Error("useEntities must be used within EntityProvider");
+  return ctx;
+}

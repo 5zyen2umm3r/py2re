@@ -1,0 +1,59 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "npm",
+            "script": "build",
+            "path": "frontend",
+            "group": "build",
+            "problemMatcher": [],
+            "label": "npm: build - flow-chart-app",
+            "detail": "vite build"
+        },
+        {
+            "label": "makemigrations",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+            "args": [
+                "manage.py",
+                "makemigrations"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\backend"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "migrate",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+            "args": [
+                "manage.py",
+                "migrate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\backend"
+            },
+             "group": "build",
+             "problemMatcher": []
+        },
+        {
+            "type": "npm",
+            "script": "build",
+            "path": "frontend",
+            "group": "build",
+            "problemMatcher": [],
+            "label": "npm: build - frontend",
+            "detail": "tsc && vite build"
+        },
+        {
+            "type": "typescript",
+            "tsconfig": "frontend/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ],
+            "group": "build",
+            "label": "tsc: build - frontend/tsconfig.json"
+        }
+    ]
+}

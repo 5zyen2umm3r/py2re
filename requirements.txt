@@ -1,0 +1,7 @@
+django>=4.2
+djangorestframework>=3.14
+shotgun_api3
+PySide6
+python-dotenv
+git+https://github.com/shotgunsoftware/tk-core@v0.23.8
+git+https://github.com/shotgunsoftware/python-api.git@v3.10.0

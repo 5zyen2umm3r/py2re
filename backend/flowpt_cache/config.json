@@ -1,0 +1,34 @@
+{
+  "generations": 10,
+  "entities": {
+    "HumanUser": {
+      "filters": [["sg_status_list", "is", "act"]],
+      "fields": ["id", "name", "login", "email", "sg_status_list", "projects"]
+    },
+    "Project": {
+      "filters": [["sg_status", "in", ["Active", "Bidding"]]],
+      "fields": ["id", "name", "sg_status", "start_date", "end_date"]
+    },
+    "Asset": {
+      "filters": [["sg_status_list", "not_in", ["omt"]]],
+      "fields": ["id", "code", "sg_status_list", "project", "sg_asset_type", "tasks"]
+    },
+    "Task": {
+      "filters": [["sg_status_list", "not_in", ["omt"]]],
+      "fields": ["id", "content", "sg_status_list", "project", "entity", "step", "task_assignees", "start_date", "due_date", "duration"]
+    },
+    "Phase": {
+      "filters": [],
+      "fields": ["id", "code", "project", "start_date", "end_date"]
+    },
+    "Step": {
+      "filters": [],
+      "fields": ["id", "code", "entity_type", "color"]
+    },
+    "Estimation": {
+      "type": "CustomEntity",
+      "filters": [],
+      "fields": ["id", "code", "sg_asset", "sg_user", "sg_hours", "sg_month", "sg_project", "sg_phase", "sg_step"]
+    }
+  }
+}
