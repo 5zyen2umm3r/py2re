@@ -1,11 +1,23 @@
 from rest_framework import serializers
-from .models import CachedEntity, EntityDiff, EntityHistory, Snapshot
+from .models import CachedEntity, CachedProject, EntityDiff, EntityHistory, Snapshot, SyncState
+
+
+class CachedProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CachedProject
+        fields = ["id", "flowpt_id", "data", "synced_at"]
 
 
 class CachedEntitySerializer(serializers.ModelSerializer):
     class Meta:
         model = CachedEntity
         fields = ["id", "entity_type", "flowpt_id", "data", "synced_at"]
+
+
+class SyncStateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SyncState
+        fields = ["entity_type", "last_synced_at"]
 
 
 class EntityDiffSerializer(serializers.ModelSerializer):

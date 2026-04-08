@@ -2,8 +2,21 @@ from django.db import models
 import json
 
 
+class CachedProject(models.Model):
+    """Projectエンティティ専用キャッシュ（他エンティティのフィルタ基準）"""
+    flowpt_id = models.IntegerField(unique=True, db_index=True)
+    data = models.JSONField()
+    synced_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["flowpt_id"]
+
+    def __str__(self):
+        return f"Project:{self.flowpt_id}"
+
+
 class CachedEntity(models.Model):
-    """Flow PTエンティティのキャッシュ（全エンティティ共通）"""
+    """Flow PTエンティティのキャッシュ（Project以外の共通テーブル）"""
     entity_type = models.CharField(max_length=64, db_index=True)
     flowpt_id = models.IntegerField(db_index=True)
     data = models.JSONField()
@@ -15,6 +28,15 @@ class CachedEntity(models.Model):
 
     def __str__(self):
         return f"{self.entity_type}:{self.flowpt_id}"
+
+
+class SyncState(models.Model):
+    """エンティティタイプごとの最終同期日時"""
+    entity_type = models.CharField(max_length=64, unique=True)
+    last_synced_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.entity_type} @ {self.last_synced_at}"
 
 
 class EntityHistory(models.Model):

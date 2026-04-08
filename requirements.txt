@@ -1,5 +1,6 @@
 django>=4.2
 djangorestframework>=3.14
+django-cors-headers>=4.3
 shotgun_api3
 PySide6
 python-dotenv

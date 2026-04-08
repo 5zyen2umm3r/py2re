@@ -1,10 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EntityViewSet, EntityHistoryViewSet, SnapshotViewSet
+from .views import EntityViewSet, EntityHistoryViewSet, SnapshotViewSet, SyncStateViewSet
 
 router = DefaultRouter()
 router.register(r"history", EntityHistoryViewSet, basename="history")
 router.register(r"snapshots", SnapshotViewSet, basename="snapshot")
+router.register(r"sync-state", SyncStateViewSet, basename="sync-state")
 
 # 汎用エンティティルート: /api/entities/<entity_type>/
 entity_list = EntityViewSet.as_view({"get": "list", "post": "create"})

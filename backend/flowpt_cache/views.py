@@ -4,22 +4,23 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import CachedEntity, EntityDiff, EntityHistory, Snapshot
+from .models import CachedEntity, CachedProject, EntityDiff, EntityHistory, Snapshot, SyncState
 from .serializers import (
-    CachedEntitySerializer, EntityDiffSerializer,
-    EntityHistorySerializer, SnapshotSerializer,
+    CachedEntitySerializer, CachedProjectSerializer, EntityDiffSerializer,
+    EntityHistorySerializer, SnapshotSerializer, SyncStateSerializer,
 )
 from .sync import sync_all, sync_entity_type, commit_diffs_to_flowpt
 
 
-def _apply_diffs(entity_type: str, base_map: dict[int, dict]) -> list[dict]:
+def _apply_diffs(entity_type: str, base_map: dict) -> list[dict]:
     """base_mapにEntityDiffを合成して返す"""
     result = copy.deepcopy(base_map)
-    diffs = EntityDiff.objects.filter(entity_type=entity_type, snapshot__isnull=True).order_by("created_at")
+    diffs = EntityDiff.objects.filter(
+        entity_type=entity_type, snapshot__isnull=True
+    ).order_by("created_at")
     for diff in diffs:
         if diff.action == "create":
-            tmp_id = f"_new_{diff.id}"
-            result[tmp_id] = {"_diff_id": diff.id, **diff.patch}
+            result[f"_new_{diff.id}"] = {"_diff_id": diff.id, **diff.patch}
         elif diff.action == "update" and diff.flowpt_id in result:
             result[diff.flowpt_id].update(diff.patch)
         elif diff.action == "delete" and diff.flowpt_id in result:
@@ -31,13 +32,13 @@ class EntityViewSet(viewsets.ViewSet):
     """
     汎用エンティティCRUD。
     ?direct=1 で差分を無視しFlowPTと直接授受。
+    sync POST body: { "full": true } でフル取得。
     """
 
     def list(self, request, entity_type=None):
         direct = request.query_params.get("direct") == "1"
         if direct:
-            from .sync import get_sg_client
-            from .sync import _load_config
+            from .sync import get_sg_client, _load_config
             cfg = _load_config()
             ec = cfg["entities"].get(entity_type, {})
             sg = get_sg_client()
@@ -45,17 +46,28 @@ class EntityViewSet(viewsets.ViewSet):
             data = sg.find(sg_type, ec.get("filters", []), ec.get("fields", ["id"]))
             return Response(data)
 
-        base = {e.flowpt_id: e.data for e in CachedEntity.objects.filter(entity_type=entity_type)}
+        if entity_type == "Project":
+            base = {e.flowpt_id: e.data for e in CachedProject.objects.all()}
+        else:
+            base = {e.flowpt_id: e.data for e in CachedEntity.objects.filter(entity_type=entity_type)}
         return Response(_apply_diffs(entity_type, base))
 
     def retrieve(self, request, entity_type=None, pk=None):
-        try:
-            cached = CachedEntity.objects.get(entity_type=entity_type, flowpt_id=pk)
-        except CachedEntity.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        if entity_type == "Project":
+            try:
+                cached = CachedProject.objects.get(flowpt_id=pk)
+            except CachedProject.DoesNotExist:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+        else:
+            try:
+                cached = CachedEntity.objects.get(entity_type=entity_type, flowpt_id=pk)
+            except CachedEntity.DoesNotExist:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+
         data = copy.deepcopy(cached.data)
-        # apply diffs for this record
-        for diff in EntityDiff.objects.filter(entity_type=entity_type, flowpt_id=pk, snapshot__isnull=True).order_by("created_at"):
+        for diff in EntityDiff.objects.filter(
+            entity_type=entity_type, flowpt_id=pk, snapshot__isnull=True
+        ).order_by("created_at"):
             if diff.action == "update":
                 data.update(diff.patch)
             elif diff.action == "delete":
@@ -81,7 +93,7 @@ class EntityViewSet(viewsets.ViewSet):
         return Response(EntityDiffSerializer(diff).data)
 
     def destroy(self, request, entity_type=None, pk=None):
-        diff = EntityDiff.objects.create(
+        EntityDiff.objects.create(
             entity_type=entity_type,
             flowpt_id=int(pk),
             patch={},
@@ -91,10 +103,11 @@ class EntityViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"], url_path="sync")
     def sync(self, request, entity_type=None):
+        full = bool(request.data.get("full", False))
         if entity_type and entity_type != "all":
-            result = sync_entity_type(entity_type)
+            result = sync_entity_type(entity_type, full=full)
         else:
-            result = sync_all()
+            result = sync_all(full=full)
         return Response(result)
 
     @action(detail=False, methods=["post"], url_path="commit")
@@ -124,7 +137,13 @@ class SnapshotViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="capture")
     def capture(self, request, pk=None):
-        """現在の未コミット差分をこのSnapshotに紐付ける"""
         snapshot = self.get_object()
         EntityDiff.objects.filter(snapshot__isnull=True).update(snapshot=snapshot)
         return Response({"status": "captured"})
+
+
+class SyncStateViewSet(viewsets.ReadOnlyModelViewSet):
+    """各エンティティタイプの最終同期日時を参照するエンドポイント"""
+    queryset = SyncState.objects.all()
+    serializer_class = SyncStateSerializer
+    lookup_field = "entity_type"
