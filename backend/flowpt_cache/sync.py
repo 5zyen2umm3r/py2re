@@ -18,6 +18,13 @@ def _load_config() -> dict:
 
 def get_sg_client() -> shotgun_api3.Shotgun:
     try:
+        script_name=os.environ.get("FLOWPT_SCRIPT"),
+        if script_name:
+            return shotgun_api3.Shotgun(
+                os.environ["FLOWPT_URL"],
+                script_name=script_name,
+                api_key=os.environ["FLOWPT_KEY"],
+            )
         from tank.authentication import ShotgunAuthenticator
         auth = ShotgunAuthenticator()
         user = auth.get_default_user()
@@ -32,11 +39,6 @@ def get_sg_client() -> shotgun_api3.Shotgun:
         return user.create_sg_connection()
     except ImportError:
         pass
-    return shotgun_api3.Shotgun(
-        os.environ["FLOWPT_URL"],
-        script_name=os.environ["FLOWPT_SCRIPT"],
-        api_key=os.environ["FLOWPT_KEY"],
-    )
 
 
 # ---- SyncState helpers ----
