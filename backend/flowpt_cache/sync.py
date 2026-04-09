@@ -18,7 +18,8 @@ def _load_config() -> dict:
 
 def get_sg_client() -> shotgun_api3.Shotgun:
     try:
-        script_name=os.environ.get("FLOWPT_SCRIPT"),
+        script_name=os.environ.get("FLOWPT_SCRIPT")
+        
         if script_name:
             return shotgun_api3.Shotgun(
                 os.environ["FLOWPT_URL"],
@@ -82,7 +83,25 @@ def _record_history(entity_type, flowpt_id, before, after, action, max_gen):
     _prune_history(entity_type, flowpt_id, max_gen)
 
 
-# ---- Filter builders ----
+# ---- Project FK解決 ----
+
+def _resolve_project(entity_cfg: dict, data: dict) -> "CachedProject | None":
+    """
+    data から project_filter_field を参照し、対応する CachedProject を返す。
+    HumanUser のように project_filter_field がリスト型の場合は先頭を使用する。
+    """
+    project_field = entity_cfg.get("project_filter_field")
+    if not project_field:
+        return None
+    ref = data.get(project_field)
+    # リスト型（例: HumanUser.projects）は先頭要素を使用
+    if isinstance(ref, list):
+        ref = ref[0] if ref else None
+    if isinstance(ref, dict):
+        pid = ref.get("id")
+        if pid:
+            return CachedProject.objects.filter(flowpt_id=pid).first()
+    return None
 
 def _registered_project_ids() -> list[int]:
     """キャッシュ済みProjectのIDリストを返す"""
@@ -232,16 +251,30 @@ def sync_entity_type(
     stats = {"created": 0, "updated": 0, "deleted": 0, "mode": "full" if full else "incremental"}
 
     for fid, remote_data in remote_map.items():
+        project_obj = _resolve_project(entity_cfg, remote_data)
         if fid in local_map:
             local = local_map[fid]
+            update_fields = []
             if local.data != remote_data:
                 _record_history(entity_type, fid, local.data, remote_data, "updated", max_gen)
                 local.data = remote_data
-                local.save(update_fields=["data", "synced_at"])
-                stats["updated"] += 1
+                update_fields.append("data")
+                update_fields.append("synced_at")
+            if local.project != project_obj:
+                local.project = project_obj
+                update_fields.append("project")
+            if update_fields:
+                local.save(update_fields=list(set(update_fields + ["synced_at"])))
+                if "data" in update_fields:
+                    stats["updated"] += 1
         else:
             _record_history(entity_type, fid, None, remote_data, "created", max_gen)
-            CachedEntity.objects.create(entity_type=entity_type, flowpt_id=fid, data=remote_data)
+            CachedEntity.objects.create(
+                entity_type=entity_type,
+                flowpt_id=fid,
+                data=remote_data,
+                project=project_obj,
+            )
             stats["created"] += 1
 
     # 削除検出はフル取得時のみ

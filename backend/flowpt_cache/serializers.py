@@ -9,9 +9,12 @@ class CachedProjectSerializer(serializers.ModelSerializer):
 
 
 class CachedEntitySerializer(serializers.ModelSerializer):
+    # CachedProject の flowpt_id を project_id として公開
+    project_id = serializers.IntegerField(source="project.flowpt_id", read_only=True, allow_null=True)
+
     class Meta:
         model = CachedEntity
-        fields = ["id", "entity_type", "flowpt_id", "data", "synced_at"]
+        fields = ["id", "entity_type", "flowpt_id", "project_id", "data", "synced_at"]
 
 
 class SyncStateSerializer(serializers.ModelSerializer):

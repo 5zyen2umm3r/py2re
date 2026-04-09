@@ -9,12 +9,13 @@
 import React, { useState, useCallback, useMemo, CSSProperties } from "react";
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Menu, MenuItem, IconButton, Collapse, Box,
+  Paper, Menu, MenuItem, IconButton, Box,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { FlexTableProps, RowDef, ColumnDef, SubAxis, CellDef, ContextMenuDef, ContextMenuItem } from "./types";
 import { FlowEntity, EntityType } from "../../api/entities";
+import { CellEditor } from "./CellEditor";
 
 // ---- ユーティリティ ----
 
@@ -155,6 +156,13 @@ interface CtxState {
   params: { rowChain: unknown[]; colChain: unknown[]; entities: FlowEntity[] };
 }
 
+/** 編集中セルの識別キー */
+interface EditingCell {
+  rowKey: string;
+  colIndex: number;
+  currentValue: unknown;
+}
+
 /**
  * RowNodeの階層を辿り、ルートから当該ノードまでのContextMenuアイテムを統合する。
  * 下位階層で右クリックした場合、上位のアイテムも含めて表示する。
@@ -198,10 +206,15 @@ interface RowRendererProps {
   onToggle: (key: string) => void;
   onContextMenu: (e: React.MouseEvent, items: ContextMenuItem[], params: CtxState["params"]) => void;
   totalDepth: number;
+  editingCell: EditingCell | null;
+  onStartEdit: (rowKey: string, colIndex: number, currentValue: unknown) => void;
+  onCommitEdit: (rowChain: unknown[], colChain: unknown[], currentValue: unknown, inputValue: unknown, cellDef: CellDef) => void;
+  onCancelEdit: () => void;
 }
 
 function RowRenderer({
   node, colChains, columns, entities, openKeys, onToggle, onContextMenu, totalDepth,
+  editingCell, onStartEdit, onCommitEdit, onCancelEdit,
 }: RowRendererProps) {
   const { rowKey, chain, depth, hasChildren, rowDef, isSubRow } = node;
   const isOpen = openKeys.has(rowKey);
@@ -222,7 +235,6 @@ function RowRenderer({
   const cellDef: CellDef = rowDef.cell;
   const cellEntities = cellDef.entityType ? (entities[cellDef.entityType] ?? []) : [];
 
-  // 当該深さまでのContextMenuアイテムを統合
   const menuItems = collectContextMenuItems(rowDef, depth);
   const hasMenu = menuItems.length > 0;
 
@@ -252,21 +264,41 @@ function RowRenderer({
         {colChains.map((colChain, ci) => {
           const value = cellDef.cellValue(cellEntities, chain, colChain);
           const cellStyle: CSSProperties = cellDef.highlight?.(rowVal, colChain[colChain.length - 1], value) ?? {};
-          // セルのContextMenuも統合（cellDef.contextMenuはセル固有）
           const cellMenuItems = cellDef.contextMenu
             ? [...menuItems, ...cellDef.contextMenu.items]
             : menuItems;
+          const isEditing = editingCell?.rowKey === rowKey && editingCell?.colIndex === ci;
+          const isEditable = !!cellDef.editField && !!cellDef.onUpdate;
+
           return (
             <TableCell
               key={ci}
-              style={cellStyle}
+              style={{
+                ...cellStyle,
+                cursor: isEditable ? "pointer" : undefined,
+                padding: isEditing ? 2 : undefined,
+              }}
+              onClick={
+                isEditable && !isEditing
+                  ? () => onStartEdit(rowKey, ci, value)
+                  : undefined
+              }
               onContextMenu={
                 cellMenuItems.length > 0
                   ? (e) => onContextMenu(e, cellMenuItems, { rowChain: chain, colChain, entities: cellEntities })
                   : undefined
               }
             >
-              {cellDef.display(value)}
+              {isEditing && cellDef.editField ? (
+                <CellEditor
+                  fieldDef={cellDef.editField}
+                  initialValue={value}
+                  onCommit={(inputValue) => onCommitEdit(chain, colChain, value, inputValue, cellDef)}
+                  onCancel={onCancelEdit}
+                />
+              ) : (
+                cellDef.display(value)
+              )}
             </TableCell>
           );
         })}
@@ -283,6 +315,10 @@ function RowRenderer({
           onToggle={onToggle}
           onContextMenu={onContextMenu}
           totalDepth={totalDepth}
+          editingCell={editingCell}
+          onStartEdit={onStartEdit}
+          onCommitEdit={onCommitEdit}
+          onCancelEdit={onCancelEdit}
         />
       ))}
     </>
@@ -305,6 +341,7 @@ function findSubHighlight(sub: SubAxis<unknown>, depth: number): ((v: unknown) =
 export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexTableProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
   const [ctx, setCtx] = useState<CtxState | null>(null);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
 
   const handleToggle = useCallback((key: string) => {
     setOpenKeys((prev) => {
@@ -321,6 +358,23 @@ export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexT
     },
     []
   );
+
+  const handleStartEdit = useCallback((rowKey: string, colIndex: number, currentValue: unknown) => {
+    setEditingCell({ rowKey, colIndex, currentValue });
+  }, []);
+
+  const handleCommitEdit = useCallback((
+    rowChain: unknown[],
+    colChain: unknown[],
+    value: unknown,
+    inputValue: unknown,
+    cellDef: CellDef,
+  ) => {
+    cellDef.onUpdate?.(rowChain, colChain, value, inputValue);
+    setEditingCell(null);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => setEditingCell(null), []);
 
   const closeCtx = () => setCtx(null);
 
@@ -353,7 +407,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexT
                     style={style}
                     onContextMenu={
                       colDef.contextMenu
-                        ? (e) => handleContextMenu(e, colDef.contextMenu!, { rowChain: [], colChain: chain, entities: [] })
+                        ? (e) => handleContextMenu(e, colDef.contextMenu!.items, { rowChain: [], colChain: chain, entities: [] })
                         : undefined
                     }
                   >
@@ -375,6 +429,10 @@ export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexT
                 onToggle={handleToggle}
                 onContextMenu={handleContextMenu}
                 totalDepth={0}
+                editingCell={editingCell}
+                onStartEdit={handleStartEdit}
+                onCommitEdit={handleCommitEdit}
+                onCancelEdit={handleCancelEdit}
               />
             ))}
           </TableBody>

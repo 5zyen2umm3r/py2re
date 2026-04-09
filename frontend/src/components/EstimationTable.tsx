@@ -213,8 +213,7 @@ export function EstimationTable() {
     cell: {
       entityType: "Estimation",
       cellValue: (estimations, rowChain, colChain) => {
-        const asset = rowChain[0] as FlowEntity;
-        const user  = rowChain[1] as FlowEntity | undefined;
+        const [asset, user] = rowChain as FlowEntity[];
         const month = colChain[0] as Date;
         if (!user) return "";
         const est = estimations.find(
@@ -223,9 +222,37 @@ export function EstimationTable() {
             (e.sg_user  as FlowEntity)?.id === user.id &&
             isSameMonth(e.sg_month as string, month)
         );
-        return est ? (est.sg_hours as number) : "";
+        return est;
       },
-      display: (value) => value !== "" ? `${value}h` : "",
+      display: (est) => est ? `${(est as FlowEntity).sg_hours || 0}h` : "",
+      editField: {
+        name: "sg_hours",
+        label: "工数（人月）",
+        type: "number" as const,
+        min: 0,
+        step: 0.1,
+        helperText: `1人月 = ${HOURS_PER_MONTH}h`,
+        toDisplay: (h: number) => Math.round((h / HOURS_PER_MONTH) * 100) / 100,
+        fromDisplay: (mm: number) => mm * HOURS_PER_MONTH,
+      },
+      onUpdate: (rowChain, colChain, _value, inputValue) => {
+        if (_value) {
+          const est = _value as FlowEntity;
+          patch("Estimation", est.id, { sg_hours: inputValue as number });
+          return true;
+        } else {
+          const [asset, user] = rowChain as FlowEntity[];
+          const [month] = colChain as Date[];
+          create("Estimation", {
+            sg_asset:   { type: "Asset", id: asset.id },
+            sg_project: asset.project,
+            sg_user:    { type: "HumanUser", id: user.id },
+            sg_month:   month,
+            sg_hours:   inputValue,  // fromDisplay済み
+          });
+          return true;
+        }
+      },
     },
 
     // Asset行のContextMenu
@@ -238,19 +265,19 @@ export function EstimationTable() {
           },
         },
         {
-          label: "Estimationを追加",
-          action: ({ rowChain }) => {
-            const asset = rowChain[0] as FlowEntity;
-            setFormMode({ type: "addEstimation", asset });
-          },
-        },
-        {
           label: "Assetを削除",
           action: ({ rowChain }) => {
             const asset = rowChain[0] as FlowEntity;
             if (asset?.id && confirm(`Asset "${asset.code}" を削除しますか?`)) {
               remove("Asset", asset.id);
             }
+          },
+        },
+        {
+          label: "Estimationを追加",
+          action: ({ rowChain }) => {
+            const asset = rowChain[0] as FlowEntity;
+            setFormMode({ type: "addEstimation", asset });
           },
         },
       ],

@@ -49,7 +49,15 @@ class EntityViewSet(viewsets.ViewSet):
         if entity_type == "Project":
             base = {e.flowpt_id: e.data for e in CachedProject.objects.all()}
         else:
-            base = {e.flowpt_id: e.data for e in CachedEntity.objects.filter(entity_type=entity_type)}
+            qs = CachedEntity.objects.filter(entity_type=entity_type)
+            # ?project_id=<int> でProjectを絞り込む
+            project_id = request.query_params.get("project_id")
+            if project_id is not None:
+                try:
+                    qs = qs.filter(project__flowpt_id=int(project_id))
+                except (ValueError, TypeError):
+                    return Response({"error": "project_id must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+            base = {e.flowpt_id: e.data for e in qs}
         return Response(_apply_diffs(entity_type, base))
 
     def retrieve(self, request, entity_type=None, pk=None):

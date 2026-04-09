@@ -1,6 +1,8 @@
 import { CSSProperties, ReactNode } from "react";
 import { EntityType, FlowEntity } from "../../api/entities";
+import { FieldDef } from "../../types/fieldDef";
 
+export type { FieldDef };
 export type StyleFn<T> = (value: T) => CSSProperties | undefined;
 export type DisplayFn<T> = (value: T) => ReactNode;
 
@@ -39,7 +41,26 @@ export interface CellDef<TValue = unknown> {
   entityType: EntityType;
   cellValue: (entities: FlowEntity[], rowChain: unknown[], colChain: unknown[]) => TValue;
   display: DisplayFn<TValue>;
-  onUpdate?: (entities: FlowEntity[], rowChain: unknown[], colChain: unknown[]) => boolean;
+  /**
+   * セル編集フィールド定義。
+   * 指定するとセルクリックで編集モードに入る。
+   * FieldDef の型に応じたインライン入力が表示される。
+   */
+  editField?: FieldDef;
+  /**
+   * 編集確定時コールバック。
+   * @param rowChain  行チェーン
+   * @param colChain  列チェーン
+   * @param value     現在のセル値（cellValue の戻り値）
+   * @param inputValue ユーザが入力した値（editField の fromDisplay 適用済み）
+   * @returns true: 更新成功, false: キャンセル扱い
+   */
+  onUpdate?: (
+    rowChain: unknown[],
+    colChain: unknown[],
+    value: TValue,
+    inputValue: unknown,
+  ) => boolean;
   highlight?: (row: unknown, col: unknown, value: TValue) => CSSProperties | undefined;
   contextMenu?: ContextMenuDef;
 }

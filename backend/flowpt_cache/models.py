@@ -21,10 +21,22 @@ class CachedEntity(models.Model):
     flowpt_id = models.IntegerField(db_index=True)
     data = models.JSONField()
     synced_at = models.DateTimeField(auto_now=True)
+    # 紐づくProjectへの参照（project_filter_fieldを持たないエンティティはnull）
+    project = models.ForeignKey(
+        CachedProject,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="entities",
+        db_index=True,
+    )
 
     class Meta:
         unique_together = ("entity_type", "flowpt_id")
-        indexes = [models.Index(fields=["entity_type", "flowpt_id"])]
+        indexes = [
+            models.Index(fields=["entity_type", "flowpt_id"]),
+            models.Index(fields=["entity_type", "project"]),
+        ]
 
     def __str__(self):
         return f"{self.entity_type}:{self.flowpt_id}"
