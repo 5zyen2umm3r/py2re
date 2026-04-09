@@ -15,12 +15,12 @@ import { entityApi, EntityType, FlowEntity } from "../api/entities";
 
 // ---- 型定義 ----
 
-type EntityMap = Record<number, FlowEntity>;
+type EntityMap = Record<number | string, FlowEntity>;
 type StoreState = Record<EntityType, EntityMap>;
 
 interface HistoryEntry {
   type: EntityType;
-  id: number;
+  id: number | string;
   before: FlowEntity | undefined;
   after: FlowEntity | undefined;
 }
@@ -42,11 +42,11 @@ type Action =
   | {
       kind: "PATCH";
       entityType: EntityType;
-      id: number;
+      id: number | string;
       patch: Partial<FlowEntity>;
     }
-  | { kind: "CREATE"; entityType: EntityType; entity: FlowEntity }
-  | { kind: "DELETE"; entityType: EntityType; id: number }
+  | { kind: "CREATE"; entityType: EntityType; entity: FlowEntity; tempId: string }
+  | { kind: "DELETE"; entityType: EntityType; id: number | string }
   | { kind: "UNDO" }
   | { kind: "REDO" }
   | { kind: "CLEAR_PENDING" };
@@ -138,7 +138,7 @@ function reducer(store: EntityStore, action: Action): EntityStore {
     case "CREATE": {
       const entry: HistoryEntry = {
         type: action.entityType,
-        id: action.entity.id,
+        id: action.tempId,
         before: undefined,
         after: action.entity,
       };
@@ -148,7 +148,7 @@ function reducer(store: EntityStore, action: Action): EntityStore {
           ...store.state,
           [action.entityType]: {
             ...store.state[action.entityType],
-            [action.entity.id]: action.entity,
+            [action.tempId]: action.entity,
           },
         },
         past: [...store.past, [entry]],
@@ -157,7 +157,7 @@ function reducer(store: EntityStore, action: Action): EntityStore {
           ...store.pendingDiffs,
           {
             type: action.entityType,
-            id: null,
+            id: action.tempId,   // 仮IDを保持（commit時にcreateと判定するため）
             patch: action.entity,
             action: "create",
           },
@@ -174,20 +174,22 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         before,
         after: undefined,
       };
+      // 仮IDのエンティティ削除はpendingDiffsのcreateを取り消す
+      const isTemp = typeof action.id === "string" && String(action.id).startsWith("_new_");
+      const newPendingDiffs = isTemp
+        ? store.pendingDiffs.filter(
+            (d) => !(d.type === action.entityType && d.id === action.id && d.action === "create")
+          )
+        : [
+            ...store.pendingDiffs,
+            { type: action.entityType, id: action.id, patch: {}, action: "delete" },
+          ];
       return {
         ...store,
         state: { ...store.state, [action.entityType]: map },
         past: [...store.past, [entry]],
         future: [],
-        pendingDiffs: [
-          ...store.pendingDiffs,
-          {
-            type: action.entityType,
-            id: action.id,
-            patch: {},
-            action: "delete",
-          },
-        ],
+        pendingDiffs: newPendingDiffs,
       };
     }
     case "UNDO": {
@@ -229,13 +231,12 @@ interface EntityContextValue {
   canRedo: boolean;
   loadAll: () => Promise<void>;
   load: (type: EntityType) => Promise<void>;
-  patch: (type: EntityType, id: number, data: Partial<FlowEntity>) => void;
-  create: (type: EntityType, data: Partial<FlowEntity>) => Promise<void>;
-  remove: (type: EntityType, id: number) => void;
+  patch: (type: EntityType, id: number | string, data: Partial<FlowEntity>) => void;
+  create: (type: EntityType, data: Partial<FlowEntity>) => void;
+  remove: (type: EntityType, id: number | string) => void;
   undo: () => void;
   redo: () => void;
   commit: (type: EntityType) => Promise<void>;
-  /** エンティティ間参照解決: entity.{type} => FlowEntity | undefined */
   resolve: (
     ref: { type: EntityType; id: number } | null | undefined,
   ) => FlowEntity | undefined;
@@ -262,21 +263,24 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   }, [load]);
 
   const patch = useCallback(
-    (type: EntityType, id: number, data: Partial<FlowEntity>) => {
+    (type: EntityType, id: number | string, data: Partial<FlowEntity>) => {
       dispatch({ kind: "PATCH", entityType: type, id, patch: data });
     },
     [],
   );
 
+  // 仮ID採番用カウンタ（コンポーネントをまたいで一意にするためモジュールスコープ）
   const create = useCallback(
-    async (type: EntityType, data: Partial<FlowEntity>) => {
-      const created = await entityApi.create(type, data);
-      dispatch({ kind: "CREATE", entityType: type, entity: created });
+    (type: EntityType, data: Partial<FlowEntity>) => {
+      const tempId = `_new_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const entity: FlowEntity = { id: tempId as unknown as number, type, ...data };
+      dispatch({ kind: "CREATE", entityType: type, entity, tempId });
+      // APIは呼ばない。commit時に送信する。
     },
     [],
   );
 
-  const remove = useCallback((type: EntityType, id: number) => {
+  const remove = useCallback((type: EntityType, id: number | string) => {
     dispatch({ kind: "DELETE", entityType: type, id });
   }, []);
 
@@ -287,16 +291,21 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     async (type: EntityType) => {
       const diffs = store.pendingDiffs.filter((d) => d.type === type);
       for (const d of diffs) {
-        // _diff_id, id(_new_*) などの内部フィールドを除去してクリーンなpatchを作る
+        // _diff_id・仮ID・内部フィールドを除去したクリーンなpatchを作る
         const cleanPatch = Object.fromEntries(
-          Object.entries(d.patch).filter(([k]) => k !== "_diff_id" && !String(k).startsWith("_new_"))
+          Object.entries(d.patch).filter(
+            ([k, v]) =>
+              k !== "_diff_id" &&
+              k !== "id" &&
+              !(typeof v === "string" && v.startsWith("_new_"))
+          )
         ) as Partial<FlowEntity>;
 
-        if (d.action === "update" && d.id && typeof d.id === "number") {
-          await entityApi.update(type, d.id, cleanPatch);
-        } else if (d.action === "create") {
+        if (d.action === "create") {
           await entityApi.create(type, cleanPatch);
-        } else if (d.action === "delete" && d.id && typeof d.id === "number") {
+        } else if (d.action === "update" && typeof d.id === "number") {
+          await entityApi.update(type, d.id, cleanPatch);
+        } else if (d.action === "delete" && typeof d.id === "number") {
           await entityApi.delete(type, d.id);
         }
       }

@@ -98,7 +98,7 @@ export function EstimationTable() {
         sg_project: selectedProject ? { type: "Project", id: selectedProject.id } : undefined,
         sg_user:    { type: "HumanUser", id: values.sg_user },
         sg_month:   values.sg_month,
-        sg_hours:   values.sg_man_months as number,  // fromDisplay済み
+        sg_hours:   values.sg_man_months as number,
       });
     } else if (formMode.type === "editEstimation") {
       patch("Estimation", formMode.estimation.id, {
