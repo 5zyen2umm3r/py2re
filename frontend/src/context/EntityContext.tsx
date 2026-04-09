@@ -31,7 +31,7 @@ interface EntityStore {
   future: HistoryEntry[][];
   pendingDiffs: {
     type: EntityType;
-    id: number | null;
+    id: number | string | null;
     patch: Partial<FlowEntity>;
     action: string;
   }[];
@@ -96,6 +96,31 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         before,
         after,
       };
+      // _new_* IDのエンティティへのpatchは、create diffのマージ更新として扱う
+      // pendingDiffsに既存のcreateがあればそれをマージ、なければupdateとして積む
+      const existingCreateIdx = store.pendingDiffs.findIndex(
+        (d) => d.type === action.entityType && d.action === "create" &&
+               d.patch.id === action.id
+      );
+      let newPendingDiffs;
+      if (existingCreateIdx >= 0) {
+        // 既存のcreate diffにマージ
+        newPendingDiffs = store.pendingDiffs.map((d, i) =>
+          i === existingCreateIdx
+            ? { ...d, patch: { ...d.patch, ...action.patch } }
+            : d
+        );
+      } else {
+        newPendingDiffs = [
+          ...store.pendingDiffs,
+          {
+            type: action.entityType,
+            id: action.id,
+            patch: action.patch,
+            action: "update",
+          },
+        ];
+      }
       return {
         ...store,
         state: {
@@ -107,15 +132,7 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         },
         past: [...store.past, [entry]],
         future: [],
-        pendingDiffs: [
-          ...store.pendingDiffs,
-          {
-            type: action.entityType,
-            id: action.id,
-            patch: action.patch,
-            action: "update",
-          },
-        ],
+        pendingDiffs: newPendingDiffs,
       };
     }
     case "CREATE": {
@@ -270,11 +287,18 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     async (type: EntityType) => {
       const diffs = store.pendingDiffs.filter((d) => d.type === type);
       for (const d of diffs) {
-        if (d.action === "update" && d.id)
-          await entityApi.update(type, d.id, d.patch);
-        else if (d.action === "create") await entityApi.create(type, d.patch);
-        else if (d.action === "delete" && d.id)
+        // _diff_id, id(_new_*) などの内部フィールドを除去してクリーンなpatchを作る
+        const cleanPatch = Object.fromEntries(
+          Object.entries(d.patch).filter(([k]) => k !== "_diff_id" && !String(k).startsWith("_new_"))
+        ) as Partial<FlowEntity>;
+
+        if (d.action === "update" && d.id && typeof d.id === "number") {
+          await entityApi.update(type, d.id, cleanPatch);
+        } else if (d.action === "create") {
+          await entityApi.create(type, cleanPatch);
+        } else if (d.action === "delete" && d.id && typeof d.id === "number") {
           await entityApi.delete(type, d.id);
+        }
       }
       dispatch({ kind: "CLEAR_PENDING" });
     },

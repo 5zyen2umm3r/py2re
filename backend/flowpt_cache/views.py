@@ -20,11 +20,31 @@ def _apply_diffs(entity_type: str, base_map: dict) -> list[dict]:
     ).order_by("created_at")
     for diff in diffs:
         if diff.action == "create":
-            result[f"_new_{diff.id}"] = {"_diff_id": diff.id, **diff.patch}
-        elif diff.action == "update" and diff.flowpt_id in result:
-            result[diff.flowpt_id].update(diff.patch)
-        elif diff.action == "delete" and diff.flowpt_id in result:
-            del result[diff.flowpt_id]
+            # 仮IDキーは "_new_{diff.id}"、_diff_id でcreate diffと識別できるようにする
+            tmp_key = f"_new_{diff.id}"
+            result[tmp_key] = {"id": tmp_key, "_diff_id": diff.id, **diff.patch}
+        elif diff.action == "update":
+            # 通常のflowpt_idキーへのupdate
+            if diff.flowpt_id in result:
+                result[diff.flowpt_id].update(diff.patch)
+            # create diff上のエンティティへのupdate（_diff_idで照合）
+            else:
+                for key, val in result.items():
+                    if isinstance(key, str) and key.startswith("_new_") and val.get("_diff_id") == diff.flowpt_id:
+                        val.update(diff.patch)
+                        break
+        elif diff.action == "delete":
+            if diff.flowpt_id in result:
+                del result[diff.flowpt_id]
+            else:
+                # create diff上のエンティティの削除
+                del_key = next(
+                    (k for k, v in result.items()
+                     if isinstance(k, str) and k.startswith("_new_") and v.get("_diff_id") == diff.flowpt_id),
+                    None
+                )
+                if del_key:
+                    del result[del_key]
     return list(result.values())
 
 
@@ -92,6 +112,19 @@ class EntityViewSet(viewsets.ViewSet):
         return Response(EntityDiffSerializer(diff).data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, entity_type=None, pk=None):
+        # pk が "_new_<diff_id>" 形式の場合は create diff をマージ更新する
+        pk_str = str(pk)
+        if pk_str.startswith("_new_"):
+            try:
+                diff_id = int(pk_str[len("_new_"):])
+                orig_diff = EntityDiff.objects.get(id=diff_id, action="create", entity_type=entity_type)
+                merged_patch = {**orig_diff.patch, **request.data}
+                orig_diff.patch = merged_patch
+                orig_diff.save(update_fields=["patch"])
+                return Response(EntityDiffSerializer(orig_diff).data)
+            except (EntityDiff.DoesNotExist, ValueError):
+                return Response({"error": "create diff not found"}, status=status.HTTP_404_NOT_FOUND)
+
         diff = EntityDiff.objects.create(
             entity_type=entity_type,
             flowpt_id=int(pk),
@@ -101,6 +134,15 @@ class EntityViewSet(viewsets.ViewSet):
         return Response(EntityDiffSerializer(diff).data)
 
     def destroy(self, request, entity_type=None, pk=None):
+        pk_str = str(pk)
+        if pk_str.startswith("_new_"):
+            try:
+                diff_id = int(pk_str[len("_new_"):])
+                EntityDiff.objects.filter(id=diff_id, action="create", entity_type=entity_type).delete()
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            except ValueError:
+                return Response({"error": "invalid id"}, status=status.HTTP_400_BAD_REQUEST)
+
         EntityDiff.objects.create(
             entity_type=entity_type,
             flowpt_id=int(pk),
