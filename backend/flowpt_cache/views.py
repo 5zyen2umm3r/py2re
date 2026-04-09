@@ -104,10 +104,11 @@ class EntityViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"], url_path="sync")
     def sync(self, request, entity_type=None):
         full = bool(request.data.get("full", False))
+        project_ids: list[int] | None = request.data.get("project_ids") or None
         if entity_type and entity_type != "all":
-            result = sync_entity_type(entity_type, full=full)
+            result = sync_entity_type(entity_type, full=full, project_ids=project_ids)
         else:
-            result = sync_all(full=full)
+            result = sync_all(full=full, project_ids=project_ids)
         return Response(result)
 
     @action(detail=False, methods=["post"], url_path="commit")

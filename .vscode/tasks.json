@@ -34,8 +34,11 @@
             "options": {
                 "cwd": "${workspaceFolder}\\backend"
             },
-             "group": "build",
-             "problemMatcher": []
+            "dependsOn": [
+                "makemigrations"
+            ],
+            "group": "build",
+            "problemMatcher": []
         },
         {
             "type": "npm",

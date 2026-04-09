@@ -89,23 +89,28 @@ def _registered_project_ids() -> list[int]:
     return list(CachedProject.objects.values_list("flowpt_id", flat=True))
 
 
-def _build_filters(entity_cfg: dict, last_synced: datetime | None, full: bool) -> list:
+def _build_filters(
+    entity_cfg: dict,
+    last_synced: datetime | None,
+    full: bool,
+    project_ids: list[int] | None = None,
+) -> list:
     """
     config の filters に以下を追加して返す:
-    - project_filter_field が定義されていれば、登録済みProjectへの絞り込み
+    - project_filter_field が定義されていれば、対象Projectへの絞り込み
+      project_ids 指定時はその値を、未指定時は登録済み全Projectを使用
     - full=False かつ last_synced があれば updated_at フィルタ
     """
     filters = list(entity_cfg.get("filters", []))
 
     project_field = entity_cfg.get("project_filter_field")
     if project_field:
-        project_ids = _registered_project_ids()
-        if project_ids:
+        pids = project_ids if project_ids is not None else _registered_project_ids()
+        if pids:
             filters.append(
-                [project_field, "in", [{"type": "Project", "id": pid} for pid in project_ids]]
+                [project_field, "in", [{"type": "Project", "id": pid} for pid in pids]]
             )
         else:
-            # Projectが未登録の場合は何も取得しない
             filters.append(["id", "is", -1])
 
     if not full and last_synced is not None:
@@ -116,8 +121,11 @@ def _build_filters(entity_cfg: dict, last_synced: datetime | None, full: bool) -
 
 # ---- Project専用同期 ----
 
-def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False) -> dict:
-    """Projectエンティティを専用テーブル(CachedProject)に同期する"""
+def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False, project_ids: list[int] | None = None) -> dict:
+    """
+    Projectエンティティを専用テーブル(CachedProject)に同期する。
+    project_ids 指定時はそのIDのProjectのみ取得・更新する。
+    """
     config = _load_config()
     max_gen: int = config.get("generations", 10)
     entity_cfg = config["entities"]["Project"]
@@ -127,6 +135,8 @@ def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False) -> dict:
     sync_start = datetime.now(timezone.utc)
 
     filters = list(entity_cfg.get("filters", []))
+    if project_ids is not None:
+        filters.append(["id", "in", project_ids])
     if not full and last_synced is not None:
         filters.append(["updated_at", "greater_than", last_synced])
 
@@ -137,7 +147,11 @@ def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False) -> dict:
     stats = {"created": 0, "updated": 0, "deleted": 0, "mode": "full" if full else "incremental"}
 
     if full:
-        local_ids = set(CachedProject.objects.values_list("flowpt_id", flat=True))
+        # 削除検出のスコープ: project_ids 指定時はその範囲のみ
+        local_qs = CachedProject.objects.all()
+        if project_ids is not None:
+            local_qs = local_qs.filter(flowpt_id__in=project_ids)
+        local_ids = set(local_qs.values_list("flowpt_id", flat=True))
         for fid in local_ids - set(remote_map.keys()):
             local = CachedProject.objects.get(flowpt_id=fid)
             _record_history(entity_type, fid, local.data, None, "deleted", max_gen)
@@ -163,18 +177,24 @@ def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False) -> dict:
 
 # ---- 汎用エンティティ同期 ----
 
-def sync_entity_type(entity_type: str, sg: shotgun_api3.Shotgun | None = None, full: bool = False) -> dict:
+def sync_entity_type(
+    entity_type: str,
+    sg: shotgun_api3.Shotgun | None = None,
+    full: bool = False,
+    project_ids: list[int] | None = None,
+) -> dict:
     """
     指定エンティティタイプをFlowPTから同期する。
     full=False（デフォルト）: 前回同期以降の updated_at 差分のみ取得。
     full=True: フル取得（削除検出も行う）。
-    Project は専用テーブルに同期する。
+    project_ids: 対象Projectを絞り込む。None の場合は登録済み全Project。
+    Project は専用テーブルに同期する（project_ids は Project自体のIDフィルタとして使用）。
     """
     if sg is None:
         sg = get_sg_client()
 
     if entity_type == "Project":
-        return sync_projects(sg, full=full)
+        return sync_projects(sg, full=full, project_ids=project_ids)
 
     config = _load_config()
     max_gen: int = config.get("generations", 10)
@@ -186,16 +206,29 @@ def sync_entity_type(entity_type: str, sg: shotgun_api3.Shotgun | None = None, f
     sync_start = datetime.now(timezone.utc)
 
     sg_type = entity_cfg.get("type", entity_type)
-    filters = _build_filters(entity_cfg, last_synced, full)
+    filters = _build_filters(entity_cfg, last_synced, full, project_ids)
 
     remote_entities: list[dict] = sg.find(
         sg_type, filters, entity_cfg.get("fields", ["id"])
     )
     remote_map: dict[int, dict] = {e["id"]: e for e in remote_entities}
-    local_map: dict[int, CachedEntity] = {
-        e.flowpt_id: e
-        for e in CachedEntity.objects.filter(entity_type=entity_type)
-    }
+
+    # 削除検出のローカルスコープ: project_ids 指定時はそのProject配下のみ対象
+    project_field = entity_cfg.get("project_filter_field")
+    if project_ids is not None and project_field:
+        pids_set = set(project_ids)
+        local_qs = CachedEntity.objects.filter(entity_type=entity_type)
+        local_map: dict[int, CachedEntity] = {
+            e.flowpt_id: e for e in local_qs
+            if isinstance(e.data.get(project_field), dict)
+            and e.data[project_field].get("id") in pids_set
+        }
+    else:
+        local_map = {
+            e.flowpt_id: e
+            for e in CachedEntity.objects.filter(entity_type=entity_type)
+        }
+
     stats = {"created": 0, "updated": 0, "deleted": 0, "mode": "full" if full else "incremental"}
 
     for fid, remote_data in remote_map.items():
@@ -223,24 +256,28 @@ def sync_entity_type(entity_type: str, sg: shotgun_api3.Shotgun | None = None, f
     return stats
 
 
-def sync_all(sg: shotgun_api3.Shotgun | None = None, full: bool = False) -> dict:
+def sync_all(
+    sg: shotgun_api3.Shotgun | None = None,
+    full: bool = False,
+    project_ids: list[int] | None = None,
+) -> dict:
     """
     全エンティティを同期する。
     Projectを先に同期し、他エンティティのproject絞り込みに使用する。
     full=True でフル取得（削除検出あり）。
+    project_ids 指定時はそのProject配下のエンティティのみ同期する。
     """
     config = _load_config()
     if sg is None:
         sg = get_sg_client()
 
     results: dict = {}
-    # Projectを最初に同期（他エンティティのフィルタ基準になるため）
-    results["Project"] = sync_projects(sg, full=full)
+    results["Project"] = sync_projects(sg, full=full, project_ids=project_ids)
 
     for entity_type in config["entities"]:
         if entity_type == "Project":
             continue
-        results[entity_type] = sync_entity_type(entity_type, sg, full=full)
+        results[entity_type] = sync_entity_type(entity_type, sg, full=full, project_ids=project_ids)
 
     return results
 
