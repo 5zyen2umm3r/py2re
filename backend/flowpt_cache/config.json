@@ -32,8 +32,8 @@
     "Estimation": {
       "type": "CustomEntity",
       "filters": [],
-      "fields": ["id", "code", "sg_asset", "sg_user", "sg_hours", "sg_month", "sg_project", "sg_phase", "sg_step"],
-      "project_filter_field": "sg_project"
+      "fields": ["id", "code", "sg_asset", "sg_user", "sg_hours", "sg_month", "project", "sg_phase", "sg_step"],
+      "project_filter_field": "project"
     }
   }
 }

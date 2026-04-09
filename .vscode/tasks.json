@@ -50,6 +50,14 @@
             "detail": "tsc && vite build"
         },
         {
+            "type": "npm",
+            "script": "install",
+            "path": "frontend",
+            "group": "build",
+            "problemMatcher": [],
+            "label": "npm: install",
+        },        
+        {
             "type": "typescript",
             "tsconfig": "frontend/tsconfig.json",
             "problemMatcher": [

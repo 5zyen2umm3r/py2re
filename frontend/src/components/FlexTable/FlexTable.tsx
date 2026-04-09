@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
-import { FlexTableProps, RowDef, ColumnDef, SubAxis, CellDef, ContextMenuDef } from "./types";
+import { FlexTableProps, RowDef, ColumnDef, SubAxis, CellDef, ContextMenuDef, ContextMenuItem } from "./types";
 import { FlowEntity, EntityType } from "../../api/entities";
 
 // ---- ユーティリティ ----
@@ -151,8 +151,40 @@ function expandSubColAxis(sub: SubAxis<unknown>, parent: FlowEntity): unknown[][
 interface CtxState {
   mouseX: number;
   mouseY: number;
-  def: ContextMenuDef;
+  items: ContextMenuItem[];
   params: { rowChain: unknown[]; colChain: unknown[]; entities: FlowEntity[] };
+}
+
+/**
+ * RowNodeの階層を辿り、ルートから当該ノードまでのContextMenuアイテムを統合する。
+ * 下位階層で右クリックした場合、上位のアイテムも含めて表示する。
+ */
+function collectContextMenuItems(
+  rowDef: RowDef,
+  depth: number,
+): ContextMenuItem[] {
+  // depth=0: RowDef自身, depth>=1: sub階層
+  const items: ContextMenuItem[] = [];
+
+  // RowDef（親）のアイテムは常に含める
+  if (rowDef.contextMenu) items.push(...rowDef.contextMenu.items);
+
+  // sub階層を depth まで辿ってアイテムを収集
+  if (depth >= 1 && rowDef.sub) {
+    collectSubContextMenuItems(rowDef.sub, depth, items);
+  }
+  return items;
+}
+
+function collectSubContextMenuItems(
+  sub: SubAxis<unknown>,
+  remainDepth: number,
+  items: ContextMenuItem[],
+) {
+  if (sub.contextMenu) items.push(...sub.contextMenu.items);
+  if (remainDepth > 1 && sub.sub) {
+    collectSubContextMenuItems(sub.sub, remainDepth - 1, items);
+  }
 }
 
 // ---- 行レンダリング（再帰） ----
@@ -164,7 +196,7 @@ interface RowRendererProps {
   entities: Record<EntityType, FlowEntity[]>;
   openKeys: Set<string>;
   onToggle: (key: string) => void;
-  onContextMenu: (e: React.MouseEvent, def: ContextMenuDef, params: CtxState["params"]) => void;
+  onContextMenu: (e: React.MouseEvent, items: ContextMenuItem[], params: CtxState["params"]) => void;
   totalDepth: number;
 }
 
@@ -175,16 +207,13 @@ function RowRenderer({
   const isOpen = openKeys.has(rowKey);
   const children = isOpen ? node.buildChildren() : [];
 
-  // 表示値: chainの末尾
   const rowVal = chain[chain.length - 1];
 
-  // 行ラベル表示
   const displayFn = isSubRow
     ? (rowDef.sub ? findSubDisplay(rowDef.sub, depth) : undefined)
     : rowDef.display;
   const label = displayFn ? displayFn(rowVal) : String(rowVal ?? "");
 
-  // ハイライト
   const highlightFn = isSubRow
     ? (rowDef.sub ? findSubHighlight(rowDef.sub, depth) : undefined)
     : rowDef.highlight;
@@ -193,19 +222,20 @@ function RowRenderer({
   const cellDef: CellDef = rowDef.cell;
   const cellEntities = cellDef.entityType ? (entities[cellDef.entityType] ?? []) : [];
 
-  const contextMenuDef = rowDef.contextMenu;
+  // 当該深さまでのContextMenuアイテムを統合
+  const menuItems = collectContextMenuItems(rowDef, depth);
+  const hasMenu = menuItems.length > 0;
 
   return (
     <>
       <TableRow
         onContextMenu={
-          contextMenuDef
-            ? (e) => onContextMenu(e, contextMenuDef, { rowChain: chain, colChain: [], entities: cellEntities })
+          hasMenu
+            ? (e) => onContextMenu(e, menuItems, { rowChain: chain, colChain: [], entities: cellEntities })
             : undefined
         }
         sx={{ "& > td": { borderBottom: hasChildren && isOpen ? "none" : undefined } }}
       >
-        {/* インデント＋折りたたみボタン */}
         <TableCell style={{ ...rowStyle, paddingLeft: 8 + depth * 20, whiteSpace: "nowrap", width: 1 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             {hasChildren ? (
@@ -219,17 +249,20 @@ function RowRenderer({
           </Box>
         </TableCell>
 
-        {/* セル */}
         {colChains.map((colChain, ci) => {
           const value = cellDef.cellValue(cellEntities, chain, colChain);
           const cellStyle: CSSProperties = cellDef.highlight?.(rowVal, colChain[colChain.length - 1], value) ?? {};
+          // セルのContextMenuも統合（cellDef.contextMenuはセル固有）
+          const cellMenuItems = cellDef.contextMenu
+            ? [...menuItems, ...cellDef.contextMenu.items]
+            : menuItems;
           return (
             <TableCell
               key={ci}
               style={cellStyle}
               onContextMenu={
-                cellDef.contextMenu
-                  ? (e) => onContextMenu(e, cellDef.contextMenu!, { rowChain: chain, colChain, entities: cellEntities })
+                cellMenuItems.length > 0
+                  ? (e) => onContextMenu(e, cellMenuItems, { rowChain: chain, colChain, entities: cellEntities })
                   : undefined
               }
             >
@@ -239,7 +272,6 @@ function RowRenderer({
         })}
       </TableRow>
 
-      {/* 子行 */}
       {isOpen && children.map((child) => (
         <RowRenderer
           key={child.rowKey}
@@ -283,9 +315,9 @@ export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexT
   }, []);
 
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent, def: ContextMenuDef, params: CtxState["params"]) => {
+    (e: React.MouseEvent, items: ContextMenuItem[], params: CtxState["params"]) => {
       e.preventDefault();
-      setCtx({ mouseX: e.clientX, mouseY: e.clientY, def, params });
+      setCtx({ mouseX: e.clientX, mouseY: e.clientY, items, params });
     },
     []
   );
@@ -355,7 +387,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexT
         anchorReference="anchorPosition"
         anchorPosition={ctx ? { top: ctx.mouseY, left: ctx.mouseX } : undefined}
       >
-        {ctx?.def.items.map((item, i) => (
+        {ctx?.items.map((item, i) => (
           <MenuItem key={i} onClick={() => { item.action(ctx.params); closeCtx(); }}>
             {item.label}
           </MenuItem>
