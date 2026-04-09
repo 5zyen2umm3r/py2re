@@ -39,6 +39,15 @@
             "autoStartBrowser": false,
             "program": "manage.py",
             "cwd": "${workspaceFolder}\\backend"
-        }        
+        },
+        {
+            "type": "msedge",
+            "request": "launch",
+            "name": "Browser & Vite",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/frontend",
+            "preLaunchTask": "npm-run-dev",
+            "postDebugTask": "npm-kill-frontend"
+        }
     ]
 }

@@ -2,15 +2,6 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "type": "npm",
-            "script": "build",
-            "path": "frontend",
-            "group": "build",
-            "problemMatcher": [],
-            "label": "npm: build - flow-chart-app",
-            "detail": "vite build"
-        },
-        {
             "label": "makemigrations",
             "type": "shell",
             "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
@@ -50,21 +41,46 @@
             "detail": "tsc && vite build"
         },
         {
+            "label": "npm-run-dev",
+            "type": "npm",
+            "script": "dev",
+            "detail": "Start development server",
+            "path": "frontend",
+            "group": "test",
+            "isBackground": true,
+            "problemMatcher": [
+                {
+                    "pattern": [
+                        {
+                            "regexp": ".",
+                            "file": 1,
+                            "location": 2,
+                            "message": 3
+                        }
+                    ],
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": ".",
+                        "endsPattern": ".*Local:.*"
+                    }
+                }
+            ]
+        },
+        {
+            "label": "npm-kill-frontend",
+            "type": "shell",
+            "command": "npx kill-port 5173",
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            }
+        },
+        {
             "type": "npm",
             "script": "install",
             "path": "frontend",
             "group": "build",
             "problemMatcher": [],
             "label": "npm: install",
-        },        
-        {
-            "type": "typescript",
-            "tsconfig": "frontend/tsconfig.json",
-            "problemMatcher": [
-                "$tsc"
-            ],
-            "group": "build",
-            "label": "tsc: build - frontend/tsconfig.json"
-        }
+        },
     ]
 }
