@@ -196,7 +196,6 @@ export function EstimationTable() {
             action: ({ rowChain }) => {
               const asset = rowChain[0] as FlowEntity;
               const user  = rowChain[1] as FlowEntity;
-              // 最初の1件を編集対象とする（複数ある場合は先頭）
               const est = getList("Estimation").find(
                 (e) =>
                   (e.sg_asset as FlowEntity)?.id === asset.id &&
@@ -207,51 +206,49 @@ export function EstimationTable() {
           },
         ],
       },
-    },
 
-    // セル: 当該HumanUser × 当該月のEstimation工数
-    cell: {
-      entityType: "Estimation",
-      cellValue: (estimations, rowChain, colChain) => {
-        const [asset, user] = rowChain as FlowEntity[];
-        const month = colChain[0] as Date;
-        if (!user) return "";
-        const est = estimations.find(
-          (e) =>
-            (e.sg_asset as FlowEntity)?.id === asset.id &&
-            (e.sg_user  as FlowEntity)?.id === user.id &&
-            isSameMonth(e.sg_month as string, month)
-        );
-        return est;
-      },
-      display: (est) => est ? `${(est as FlowEntity).sg_hours || 0}h` : "",
-      editField: {
-        name: "sg_hours",
-        label: "工数（人月）",
-        type: "number" as const,
-        min: 0,
-        step: 0.1,
-        helperText: `1人月 = ${HOURS_PER_MONTH}h`,
-        toDisplay: (h: number) => Math.round((h / HOURS_PER_MONTH) * 100) / 100,
-        fromDisplay: (mm: number) => mm * HOURS_PER_MONTH,
-      },
-      onUpdate: (rowChain, colChain, _value, inputValue) => {
-        if (_value) {
-          const est = _value as FlowEntity;
-          patch("Estimation", est.id, { sg_hours: inputValue as number });
-          return true;
-        } else {
+      // 副行のセル定義（HumanUser行にのみ適用）
+      cell: {
+        entityType: "Estimation",
+        cellValue: (estimations, rowChain, colChain) => {
           const [asset, user] = rowChain as FlowEntity[];
-          const [month] = colChain as Date[];
-          create("Estimation", {
-            sg_asset:   { type: "Asset", id: asset.id },
-            sg_project: asset.project,
-            sg_user:    { type: "HumanUser", id: user.id },
-            sg_month:   month,
-            sg_hours:   inputValue,  // fromDisplay済み
-          });
+          const month = colChain[0] as Date;
+          if (!user) return null;
+          return estimations.find(
+            (e) =>
+              (e.sg_asset as FlowEntity)?.id === asset.id &&
+              (e.sg_user  as FlowEntity)?.id === user.id &&
+              isSameMonth(e.sg_month as string, month)
+          ) ?? null;
+        },
+        display: (est) => est ? `${(est as FlowEntity).sg_hours || 0}h` : "",
+        editField: {
+          name: "sg_hours",
+          label: "工数（人月）",
+          type: "number" as const,
+          min: 0,
+          step: 0.1,
+          helperText: `1人月 = ${HOURS_PER_MONTH}h`,
+          toDisplay: (h: number) => Math.round((h / HOURS_PER_MONTH) * 100) / 100,
+          fromDisplay: (mm: number) => mm * HOURS_PER_MONTH,
+        },
+        onUpdate: (rowChain, colChain, currentValue, inputValue) => {
+          if (currentValue) {
+            const est = currentValue as FlowEntity;
+            patch("Estimation", est.id, { sg_hours: inputValue as number });
+          } else {
+            const [asset, user] = rowChain as FlowEntity[];
+            const month = colChain[0] as Date;
+            create("Estimation", {
+              sg_asset:   { type: "Asset", id: asset.id },
+              sg_project: asset.project,
+              sg_user:    { type: "HumanUser", id: user.id },
+              sg_month:   month,
+              sg_hours:   inputValue,
+            });
+          }
           return true;
-        }
+        },
       },
     },
 

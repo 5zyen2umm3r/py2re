@@ -23,6 +23,8 @@ export interface SubAxis<TValue> {
   sub?: SubAxis<unknown>;
   /** この副行レベルのContextMenu。上位のContextMenuと統合して表示される */
   contextMenu?: ContextMenuDef;
+  /** この副行レベルのセル定義。定義された行にのみ適用される */
+  cell?: CellDef;
 }
 
 /** 列定義 */
@@ -73,7 +75,8 @@ export interface RowDef<TValue = unknown> {
   display?: DisplayFn<TValue>;
   highlight?: StyleFn<TValue>;
   sub?: SubAxis<unknown>;
-  cell: CellDef;
+  /** RowDef（親行）レベルのセル定義。省略時はセルを空白描画 */
+  cell?: CellDef;
   /** RowDef（親行）レベルのContextMenu */
   contextMenu?: ContextMenuDef;
 }

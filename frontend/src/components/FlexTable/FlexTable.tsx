@@ -50,7 +50,8 @@ interface RowNode {
   hasChildren: boolean;
   rowDef: RowDef;
   isSubRow: boolean;
-  /** この行の子ノードを生成する関数（遅延評価） */
+  /** この行に適用するセル定義（null の場合はセルを空白描画） */
+  cellDef: CellDef | null;
   buildChildren: () => RowNode[];
 }
 
@@ -78,6 +79,7 @@ function buildRowNodes(
         hasChildren,
         rowDef,
         isSubRow: false,
+        cellDef: rowDef.cell ?? null,
         buildChildren: () =>
           rowDef.sub
             ? buildSubNodes(rowDef.sub, entity as FlowEntity, chain, 1, rowKey, rowDef)
@@ -109,6 +111,7 @@ function buildSubNodes(
       hasChildren,
       rowDef,
       isSubRow: true,
+      cellDef: sub.cell ?? null,
       buildChildren: () =>
         sub.sub
           ? buildSubNodes(sub.sub, val as FlowEntity, chain, depth + 1, rowKey, rowDef)
@@ -208,7 +211,7 @@ interface RowRendererProps {
   totalDepth: number;
   editingCell: EditingCell | null;
   onStartEdit: (rowKey: string, colIndex: number, currentValue: unknown) => void;
-  onCommitEdit: (rowChain: unknown[], colChain: unknown[], currentValue: unknown, inputValue: unknown, cellDef: CellDef) => void;
+  onCommitEdit: (rowChain: unknown[], colChain: unknown[], currentValue: unknown, inputValue: unknown, cellDef: CellDef | null) => void;
   onCancelEdit: () => void;
 }
 
@@ -216,7 +219,7 @@ function RowRenderer({
   node, colChains, columns, entities, openKeys, onToggle, onContextMenu, totalDepth,
   editingCell, onStartEdit, onCommitEdit, onCancelEdit,
 }: RowRendererProps) {
-  const { rowKey, chain, depth, hasChildren, rowDef, isSubRow } = node;
+  const { rowKey, chain, depth, hasChildren, rowDef, isSubRow, cellDef } = node;
   const isOpen = openKeys.has(rowKey);
   const children = isOpen ? node.buildChildren() : [];
 
@@ -232,9 +235,7 @@ function RowRenderer({
     : rowDef.highlight;
   const rowStyle: CSSProperties = highlightFn?.(rowVal) ?? {};
 
-  const cellDef: CellDef = rowDef.cell;
-  const cellEntities = cellDef.entityType ? (entities[cellDef.entityType] ?? []) : [];
-
+  const cellEntities = cellDef?.entityType ? (entities[cellDef.entityType] ?? []) : [];
   const menuItems = collectContextMenuItems(rowDef, depth);
   const hasMenu = menuItems.length > 0;
 
@@ -262,6 +263,10 @@ function RowRenderer({
         </TableCell>
 
         {colChains.map((colChain, ci) => {
+          if (!cellDef) {
+            // cell未定義の行はセルを空白描画
+            return <TableCell key={ci} />;
+          }
           const value = cellDef.cellValue(cellEntities, chain, colChain);
           const cellStyle: CSSProperties = cellDef.highlight?.(rowVal, colChain[colChain.length - 1], value) ?? {};
           const cellMenuItems = cellDef.contextMenu
@@ -368,9 +373,9 @@ export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexT
     colChain: unknown[],
     value: unknown,
     inputValue: unknown,
-    cellDef: CellDef,
+    cellDef: CellDef | null,
   ) => {
-    cellDef.onUpdate?.(rowChain, colChain, value, inputValue);
+    cellDef?.onUpdate?.(rowChain, colChain, value, inputValue);
     setEditingCell(null);
   }, []);
 

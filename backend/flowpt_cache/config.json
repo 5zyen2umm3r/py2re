@@ -9,7 +9,7 @@
     "Project": {
       "filters": [["sg_status", "in", ["Active", "Bidding"]]],
       "filters": [],
-      "fields": ["id", "name", "sg_status", "start_date", "end_date"]
+      "fields": ["id", "name", "sg_status", "start_date", "end_date", "users"]
     },
     "Asset": {
       "filters": [["sg_status_list", "not_in", ["omt"]]],
