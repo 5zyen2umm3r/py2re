@@ -62,7 +62,7 @@ export function EstimationTable() {
   );
 
   const estimationFields = useCallback((asset: FlowEntity, project?: FlowEntity): FieldDef[] => [
-    { name: "sg_project", label: "Project", type: "readonly", render: () => (project?.name as string) ?? "-" },
+    { name: "project", label: "Project", type: "readonly", render: () => (project?.name as string) ?? "-" },
     { name: "sg_asset",   label: "Asset",   type: "readonly", render: () => (asset.code as string) ?? "-" },
     {
       name: "sg_user", label: "Assign To", type: "select", required: true,
@@ -95,7 +95,7 @@ export function EstimationTable() {
     if (formMode.type === "addEstimation") {
       create("Estimation", {
         sg_asset:   { type: "Asset",   id: formMode.asset.id },
-        sg_project: selectedProject ? { type: "Project", id: selectedProject.id } : undefined,
+        project: selectedProject ? { type: "Project", id: selectedProject.id } : undefined,
         sg_user:    { type: "HumanUser", id: values.sg_user },
         sg_month:   values.sg_month,
         sg_hours:   values.sg_man_months as number,
@@ -141,7 +141,7 @@ export function EstimationTable() {
           .filter((e) =>
             (e.sg_user as FlowEntity)?.id === user?.id &&
             isSameMonth(e.sg_month as string, month) &&
-            (!selectedProject || (e.sg_project as FlowEntity)?.id === selectedProject.id)
+            (!selectedProject || (e.project as FlowEntity)?.id === selectedProject.id)
           )
           .reduce((sum, e) => sum + ((e.sg_hours as number) ?? 0), 0);
       },
@@ -163,7 +163,7 @@ export function EstimationTable() {
       value: (asset: FlowEntity) => {
         const estimations = getList("Estimation").filter(
           (e) => (e.sg_asset as FlowEntity)?.id === asset.id &&
-                 (!selectedProject || (e.sg_project as FlowEntity)?.id === selectedProject.id)
+                 (!selectedProject || (e.project as FlowEntity)?.id === selectedProject.id)
         );
         const userIds = [...new Set(estimations.map((e) => (e.sg_user as FlowEntity)?.id).filter(Boolean))];
         return userIds.map((uid) => state.HumanUser[uid]).filter(Boolean) as FlowEntity[];
@@ -183,7 +183,7 @@ export function EstimationTable() {
                 (e) =>
                   (e.sg_asset as FlowEntity)?.id === asset.id &&
                   (e.sg_user  as FlowEntity)?.id === user.id &&
-                  (!selectedProject || (e.sg_project as FlowEntity)?.id === selectedProject.id)
+                  (!selectedProject || (e.project as FlowEntity)?.id === selectedProject.id)
               );
               if (targets.length === 0) return;
               if (confirm(`${(user.name as string)} の Estimation ${targets.length}件を削除しますか?`)) {
@@ -241,7 +241,7 @@ export function EstimationTable() {
             const month = colChain[0] as Date;
             create("Estimation", {
               sg_asset:   { type: "Asset", id: asset.id },
-              sg_project: asset.project,
+              project: asset.project,
               sg_user:    { type: "HumanUser", id: user.id },
               sg_month:   month,
               sg_hours:   inputValue,
@@ -289,7 +289,7 @@ export function EstimationTable() {
         title: "Estimationを追加",
         fields: estimationFields(formMode.asset, selectedProject),
         defaultValues: {
-          sg_project: selectedProject?.id,
+          project: selectedProject?.id,
           sg_asset:   formMode.asset.id,
         },
       };
@@ -303,7 +303,7 @@ export function EstimationTable() {
           selectedProject
         ),
         defaultValues: {
-          sg_project:    (est.sg_project as FlowEntity)?.id,
+          project:    (est.project as FlowEntity)?.id,
           sg_asset:      (est.sg_asset   as FlowEntity)?.id,
           sg_user:       (est.sg_user    as FlowEntity)?.id,
           sg_month:      est.sg_month,
