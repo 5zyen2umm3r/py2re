@@ -6,6 +6,19 @@ export type { FieldDef };
 export type StyleFn<T> = (value: T) => CSSProperties | undefined;
 export type DisplayFn<T> = (value: T) => ReactNode;
 
+export type BarPosition = { colIndex: number; offset: number };
+
+export interface BarDef {
+  entityType: EntityType;
+  filter?: (entity: FlowEntity, rowChain: unknown[]) => boolean;
+  position: (entity: FlowEntity, colChains: unknown[][]) => { start: BarPosition; end: BarPosition };
+  onDragStart?: (entity: FlowEntity, rowChain: unknown[], newPosition: BarPosition) => void;
+  onDragEnd?: (entity: FlowEntity, rowChain: unknown[], newPosition: BarPosition) => void;
+  onDragMove?: (entity: FlowEntity, rowChain: unknown[], newStart: BarPosition, newEnd: BarPosition) => void;
+  label: (entity: FlowEntity) => ReactNode;
+  style?: (entity: FlowEntity) => CSSProperties;
+}
+
 export interface ContextMenuDef {
   items: ContextMenuItem[];
 }
@@ -25,6 +38,8 @@ export interface SubAxis<TValue> {
   contextMenu?: ContextMenuDef;
   /** この副行レベルのセル定義。定義された行にのみ適用される */
   cell?: CellDef;
+  /** この副行レベルのガントバー定義 */
+  bar?: BarDef;
 }
 
 /** 列定義 */
@@ -79,6 +94,8 @@ export interface RowDef<TValue = unknown> {
   cell?: CellDef;
   /** RowDef（親行）レベルのContextMenu */
   contextMenu?: ContextMenuDef;
+  /** RowDef（親行）レベルのガントバー定義 */
+  bar?: BarDef;
 }
 
 /** FlexTable全体のProps */

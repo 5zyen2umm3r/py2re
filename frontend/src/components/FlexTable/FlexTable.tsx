@@ -6,16 +6,287 @@
  *   - sub も同様に再帰的に展開/折りたたみ可能
  *   - 各行の開閉状態は rowKey（階層パスの文字列）で管理する
  */
-import React, { useState, useCallback, useMemo, CSSProperties } from "react";
+import React, { useState, useCallback, useMemo, useRef, CSSProperties } from "react";
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Menu, MenuItem, IconButton, Box,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
-import { FlexTableProps, RowDef, ColumnDef, SubAxis, CellDef, ContextMenuDef, ContextMenuItem } from "./types";
+import { FlexTableProps, RowDef, ColumnDef, SubAxis, CellDef, ContextMenuDef, ContextMenuItem, BarDef, BarPosition } from "./types";
 import { FlowEntity, EntityType } from "../../api/entities";
 import { CellEditor } from "./CellEditor";
+import { pointerToBarPosition, barToLeftPercent, barToRightPercent } from "./barUtils";
+
+// ---- DragHandle ----
+
+type HandleType = 'start' | 'end' | 'move';
+
+interface DragHandleProps {
+  type: HandleType;
+  entity: FlowEntity;
+  barDef: BarDef;
+  rowChain: unknown[];
+  colChains: unknown[][];
+  totalColumns: number;
+  currentStart: BarPosition;
+  currentEnd: BarPosition;
+  containerRef: React.RefObject<HTMLElement>;
+  onPreviewChange: (start: BarPosition, end: BarPosition) => void;
+  onDragComplete: (start: BarPosition, end: BarPosition) => void;
+}
+
+function DragHandle({
+  type, entity, barDef, rowChain, colChains, totalColumns,
+  currentStart, currentEnd, containerRef,
+  onPreviewChange, onDragComplete,
+}: DragHandleProps) {
+  const dragStartX = useRef<number | null>(null);
+  const dragStartBarStart = useRef<BarPosition | null>(null);
+  const dragStartBarEnd = useRef<BarPosition | null>(null);
+
+  const calcPositions = useCallback((pointerX: number): { start: BarPosition; end: BarPosition } => {
+    const container = containerRef.current;
+    const containerWidth = container ? container.getBoundingClientRect().width : 1;
+    const rect = container ? container.getBoundingClientRect() : { left: 0 };
+    const relativeX = pointerX - rect.left;
+
+    if (type === 'start') {
+      const newStart = pointerToBarPosition(relativeX, containerWidth, totalColumns);
+      return { start: newStart, end: currentEnd };
+    } else if (type === 'end') {
+      const newEnd = pointerToBarPosition(relativeX, containerWidth, totalColumns);
+      return { start: currentStart, end: newEnd };
+    } else {
+      // move: maintain duration
+      const origStart = dragStartBarStart.current!;
+      const origEnd = dragStartBarEnd.current!;
+      const origStartVal = origStart.colIndex + origStart.offset;
+      const origEndVal = origEnd.colIndex + origEnd.offset;
+      const duration = origEndVal - origStartVal;
+
+      const startX = dragStartX.current!;
+      const deltaX = pointerX - startX;
+      const deltaRatio = deltaX / containerWidth;
+      const deltaCols = deltaRatio * totalColumns;
+
+      let newStartVal = origStartVal + deltaCols;
+      let newEndVal = origEndVal + deltaCols;
+
+      // clamp so both ends stay within [0, totalColumns]
+      if (newStartVal < 0) {
+        newStartVal = 0;
+        newEndVal = duration;
+      }
+      if (newEndVal > totalColumns) {
+        newEndVal = totalColumns;
+        newStartVal = totalColumns - duration;
+      }
+
+      const newStartColIndex = Math.min(Math.floor(newStartVal), totalColumns - 1);
+      const newStartOffset = Math.max(0, Math.min(1, newStartVal - newStartColIndex));
+      const newEndColIndex = Math.min(Math.floor(newEndVal), totalColumns - 1);
+      const newEndOffset = Math.max(0, Math.min(1, newEndVal - newEndColIndex));
+
+      return {
+        start: { colIndex: newStartColIndex, offset: newStartOffset },
+        end: { colIndex: newEndColIndex, offset: newEndOffset },
+      };
+    }
+  }, [type, containerRef, totalColumns, currentStart, currentEnd]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    dragStartX.current = e.clientX;
+    dragStartBarStart.current = currentStart;
+    dragStartBarEnd.current = currentEnd;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, [currentStart, currentEnd]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartX.current === null) return;
+    const positions = calcPositions(e.clientX);
+    onPreviewChange(positions.start, positions.end);
+  }, [calcPositions, onPreviewChange]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartX.current === null) return;
+    const positions = calcPositions(e.clientX);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    dragStartX.current = null;
+    dragStartBarStart.current = null;
+    dragStartBarEnd.current = null;
+    onDragComplete(positions.start, positions.end);
+  }, [calcPositions, onDragComplete]);
+
+  const style: CSSProperties = type === 'move'
+    ? { position: 'absolute', inset: 0, cursor: 'grab', zIndex: 1 }
+    : type === 'start'
+    ? { position: 'absolute', top: 0, bottom: 0, left: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }
+    : { position: 'absolute', top: 0, bottom: 0, right: 0, width: 8, cursor: 'ew-resize', zIndex: 2 };
+
+  return (
+    <div
+      style={style}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    />
+  );
+}
+
+// ---- BarElement ----
+
+interface BarElementProps {
+  entity: FlowEntity;
+  barDef: BarDef;
+  rowChain: unknown[];
+  colChains: unknown[][];
+  totalColumns: number;
+  containerRef: React.RefObject<HTMLElement>;
+}
+
+function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef }: BarElementProps) {
+  const [preview, setPreview] = useState<{ start: BarPosition; end: BarPosition } | null>(null);
+
+  const { start: baseStart, end: baseEnd } = barDef.position(entity, colChains);
+  const start = preview?.start ?? baseStart;
+  const end = preview?.end ?? baseEnd;
+
+  // Don't render if start > end
+  if (start.colIndex + start.offset > end.colIndex + end.offset) return null;
+
+  const left = barToLeftPercent(start, totalColumns);
+  const right = barToRightPercent(end, totalColumns);
+
+  const defaultStyle: CSSProperties = {
+    position: 'absolute',
+    top: '10%',
+    bottom: '10%',
+    left: `${left}%`,
+    right: `${right}%`,
+    backgroundColor: '#1976d2',
+    borderRadius: 4,
+    display: 'flex',
+    alignItems: 'center',
+    overflow: 'hidden',
+    pointerEvents: 'auto',
+    cursor: 'default',
+    minWidth: 2,
+    zIndex: 1,
+  };
+
+  const customStyle = barDef.style ? barDef.style(entity) : {};
+  const barStyle: CSSProperties = { ...defaultStyle, ...customStyle };
+
+  const handlePreviewChange = useCallback((s: BarPosition, e: BarPosition) => {
+    setPreview({ start: s, end: e });
+  }, []);
+
+  const handleStartDragComplete = useCallback((s: BarPosition, e: BarPosition) => {
+    setPreview(null);
+    barDef.onDragStart?.(entity, rowChain, s);
+  }, [barDef, entity, rowChain]);
+
+  const handleEndDragComplete = useCallback((s: BarPosition, e: BarPosition) => {
+    setPreview(null);
+    barDef.onDragEnd?.(entity, rowChain, e);
+  }, [barDef, entity, rowChain]);
+
+  const handleMoveDragComplete = useCallback((s: BarPosition, e: BarPosition) => {
+    setPreview(null);
+    barDef.onDragMove?.(entity, rowChain, s, e);
+  }, [barDef, entity, rowChain]);
+
+  return (
+    <div style={barStyle}>
+      {barDef.onDragStart && (
+        <DragHandle
+          type="start"
+          entity={entity}
+          barDef={barDef}
+          rowChain={rowChain}
+          colChains={colChains}
+          totalColumns={totalColumns}
+          currentStart={start}
+          currentEnd={end}
+          containerRef={containerRef}
+          onPreviewChange={handlePreviewChange}
+          onDragComplete={handleStartDragComplete}
+        />
+      )}
+      {barDef.onDragMove && (
+        <DragHandle
+          type="move"
+          entity={entity}
+          barDef={barDef}
+          rowChain={rowChain}
+          colChains={colChains}
+          totalColumns={totalColumns}
+          currentStart={start}
+          currentEnd={end}
+          containerRef={containerRef}
+          onPreviewChange={handlePreviewChange}
+          onDragComplete={handleMoveDragComplete}
+        />
+      )}
+      {barDef.onDragEnd && (
+        <DragHandle
+          type="end"
+          entity={entity}
+          barDef={barDef}
+          rowChain={rowChain}
+          colChains={colChains}
+          totalColumns={totalColumns}
+          currentStart={start}
+          currentEnd={end}
+          containerRef={containerRef}
+          onPreviewChange={handlePreviewChange}
+          onDragComplete={handleEndDragComplete}
+        />
+      )}
+      <span style={{ paddingLeft: 4, paddingRight: 4, fontSize: '0.75rem', color: '#fff', overflow: 'hidden', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 3, position: 'relative' }}>
+        {barDef.label(entity)}
+      </span>
+    </div>
+  );
+}
+
+// ---- BarOverlay ----
+
+interface BarOverlayProps {
+  barDef: BarDef;
+  rowChain: unknown[];
+  colChains: unknown[][];
+  entities: Record<EntityType, FlowEntity[]>;
+  totalColumns: number;
+  containerRef: React.RefObject<HTMLElement>;
+}
+
+function BarOverlay({ barDef, rowChain, colChains, entities, totalColumns, containerRef }: BarOverlayProps) {
+  const allEntities = entities[barDef.entityType] ?? [];
+  const filtered = barDef.filter
+    ? allEntities.filter((e) => {
+        try { return barDef.filter!(e, rowChain); } catch { return false; }
+      })
+    : allEntities;
+
+  return (
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
+      {filtered.map((entity) => (
+        <BarElement
+          key={entity.id}
+          entity={entity}
+          barDef={barDef}
+          rowChain={rowChain}
+          colChains={colChains}
+          totalColumns={totalColumns}
+          containerRef={containerRef}
+        />
+      ))}
+    </div>
+  );
+}
 
 // ---- ユーティリティ ----
 
@@ -52,6 +323,8 @@ interface RowNode {
   isSubRow: boolean;
   /** この行に適用するセル定義（null の場合はセルを空白描画） */
   cellDef: CellDef | null;
+  /** この行に適用するガントバー定義（null の場合はバーを描画しない） */
+  barDef: BarDef | null;
   buildChildren: () => RowNode[];
 }
 
@@ -80,6 +353,7 @@ function buildRowNodes(
         rowDef,
         isSubRow: false,
         cellDef: rowDef.cell ?? null,
+        barDef: rowDef.bar ?? null,
         buildChildren: () =>
           rowDef.sub
             ? buildSubNodes(rowDef.sub, entity as FlowEntity, chain, 1, rowKey, rowDef)
@@ -112,6 +386,7 @@ function buildSubNodes(
       rowDef,
       isSubRow: true,
       cellDef: sub.cell ?? null,
+      barDef: sub.bar ?? null,
       buildChildren: () =>
         sub.sub
           ? buildSubNodes(sub.sub, val as FlowEntity, chain, depth + 1, rowKey, rowDef)
@@ -223,6 +498,8 @@ function RowRenderer({
   const isOpen = openKeys.has(rowKey);
   const children = isOpen ? node.buildChildren() : [];
 
+  const containerRef = useRef<HTMLElement>(null);
+
   const rowVal = chain[chain.length - 1];
 
   const displayFn = isSubRow
@@ -242,12 +519,13 @@ function RowRenderer({
   return (
     <>
       <TableRow
+        ref={containerRef}
         onContextMenu={
           hasMenu
             ? (e) => onContextMenu(e, menuItems, { rowChain: chain, colChain: [], entities: cellEntities })
             : undefined
         }
-        sx={{ "& > td": { borderBottom: hasChildren && isOpen ? "none" : undefined } }}
+        sx={{ position: 'relative', "& > td": { borderBottom: hasChildren && isOpen ? "none" : undefined } }}
       >
         <TableCell style={{ ...rowStyle, paddingLeft: 8 + depth * 20, whiteSpace: "nowrap", width: 1 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -307,6 +585,27 @@ function RowRenderer({
             </TableCell>
           );
         })}
+
+        {node.barDef && (
+          <TableCell
+            sx={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0, bottom: 0,
+              padding: 0,
+              border: 'none',
+              pointerEvents: 'none',
+            }}
+          >
+            <BarOverlay
+              barDef={node.barDef}
+              rowChain={chain}
+              colChains={colChains}
+              entities={entities}
+              totalColumns={colChains.length}
+              containerRef={containerRef}
+            />
+          </TableCell>
+        )}
       </TableRow>
 
       {isOpen && children.map((child) => (

@@ -6,12 +6,14 @@ import {
 import { EntityProvider, useEntities } from "./context/EntityContext";
 import { EstimationTable } from "./components/EstimationTable";
 import { EntityBrowser } from "./pages/EntityBrowser";
+import { TaskSchedule } from "./pages/TaskSchedule";
 import { initQtChannel } from "./api/fetch";
 
 // ---- ナビゲーション用タブ（HashRouter のパスと対応） ----
 const NAV_TABS = [
   { label: "工数表", path: "/" },
   { label: "エンティティ一覧", path: "/entities" },
+  { label: "スケジュール", path: "/schedule" },
 ];
 
 function AppContent() {
@@ -68,6 +70,14 @@ function AppContent() {
           <Route
             path="/entities"
             element={<EntityBrowser />}
+          />
+          <Route
+            path="/schedule"
+            element={
+              <Box sx={{ height: "100%", overflow: "hidden" }}>
+                <TaskSchedule />
+              </Box>
+            }
           />
         </Routes>
       </Box>
