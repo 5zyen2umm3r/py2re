@@ -31,7 +31,7 @@ interface DragHandleProps {
   totalColumns: number;
   currentStart: BarPosition;
   currentEnd: BarPosition;
-  containerRef: React.RefObject<HTMLElement>;
+  containerRef: React.RefObject<HTMLTableRowElement>;
   onPreviewChange: (start: BarPosition, end: BarPosition) => void;
   onDragComplete: (start: BarPosition, end: BarPosition) => void;
 }
@@ -143,7 +143,7 @@ interface BarElementProps {
   rowChain: unknown[];
   colChains: unknown[][];
   totalColumns: number;
-  containerRef: React.RefObject<HTMLElement>;
+  containerRef: React.RefObject<HTMLTableRowElement>;
 }
 
 function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef }: BarElementProps) {
@@ -260,7 +260,7 @@ interface BarOverlayProps {
   colChains: unknown[][];
   entities: Record<EntityType, FlowEntity[]>;
   totalColumns: number;
-  containerRef: React.RefObject<HTMLElement>;
+  containerRef: React.RefObject<HTMLTableRowElement>;
 }
 
 function BarOverlay({ barDef, rowChain, colChains, entities, totalColumns, containerRef }: BarOverlayProps) {
@@ -498,7 +498,7 @@ function RowRenderer({
   const isOpen = openKeys.has(rowKey);
   const children = isOpen ? node.buildChildren() : [];
 
-  const containerRef = useRef<HTMLElement>(null);
+  const containerRef = useRef<HTMLTableRowElement>(null);
 
   const rowVal = chain[chain.length - 1];
 
@@ -696,7 +696,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities, stickyH
 
   return (
     <>
-      <TableContainer component={Paper}>
+      <TableContainer component={Paper} sx={{ maxHeight: '100%', height: '100%', overflow: 'auto' }}>
         <Table size="small" stickyHeader={stickyHeader}>
           <TableHead>
             <TableRow>

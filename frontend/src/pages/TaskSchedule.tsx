@@ -18,6 +18,7 @@ import {
   barPositionToDate,
   clampStartDate,
   clampDueDate,
+  parseDateLocal,
 } from './timeUtils';
 
 // ── ヘルパー ──────────────────────────────────────────────────
@@ -87,9 +88,9 @@ export function TaskSchedule() {
     [tasks, granularity, rangeStart, rangeEnd],
   );
 
-  // Ctrl+ホイールで粒度切り替え
+  // Shift+ホイールで粒度切り替え
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey) return;
+    if (!e.shiftKey) return;
     e.preventDefault();
     setGranularity((prev) => {
       if (e.deltaY < 0) {
@@ -114,8 +115,8 @@ export function TaskSchedule() {
       const dueStr = task['due_date'] as string | null | undefined;
       const invalid = { start: { colIndex: -1, offset: 0 }, end: { colIndex: -1, offset: 0 } };
       if (!startStr || !dueStr) return invalid;
-      const startDate = new Date(startStr);
-      const dueDate = new Date(dueStr);
+      const startDate = parseDateLocal(startStr);
+      const dueDate = parseDateLocal(dueStr);
       if (isNaN(startDate.getTime()) || isNaN(dueDate.getTime())) return invalid;
       const start = dateToBarPosition(startDate, timeCols, granularity);
       const end = dateToBarPosition(dueDate, timeCols, granularity);
@@ -244,7 +245,7 @@ export function TaskSchedule() {
         </Box>
 
         {/* ガントテーブル（Ctrl+ホイールで粒度切り替え） */}
-        <Box sx={{ flex: 1, overflow: 'auto' }} onWheel={handleWheel}>
+        <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }} onWheel={handleWheel}>
           <FlexTable
             columns={columns}
             rows={[assetRowDef]}

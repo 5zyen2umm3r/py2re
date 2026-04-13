@@ -44,7 +44,16 @@ function colEnd(colStart: Date, granularity: TimeGranularity): Date {
   }
 }
 
-// ── 公開 API ─────────────────────────────────────────────────
+/**
+ * 日付文字列 "YYYY-MM-DD" をローカルタイムゾーンの Date に変換する。
+ * new Date("YYYY-MM-DD") は UTC 0時として解釈されるため、
+ * ローカルタイムゾーンで解析するためにこの関数を使う。
+ */
+export function parseDateLocal(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 
 /**
  * 全タスクの start_date / due_date から時系列列配列を生成する。
@@ -62,8 +71,8 @@ export function generateTimeCols(
   today.setHours(0, 0, 0, 0);
 
   // 外部指定の範囲があればそれを優先
-  let minDate: Date | null = rangeStart ? new Date(rangeStart) : null;
-  let maxDate: Date | null = rangeEnd ? new Date(rangeEnd) : null;
+  let minDate: Date | null = rangeStart ? parseDateLocal(rangeStart) : null;
+  let maxDate: Date | null = rangeEnd ? parseDateLocal(rangeEnd) : null;
 
   // タスクの日付範囲でさらに拡張（外部指定がない場合はタスクから算出）
   if (!minDate || !maxDate) {
@@ -71,13 +80,13 @@ export function generateTimeCols(
       const startStr = task['start_date'] as string | null | undefined;
       const dueStr = task['due_date'] as string | null | undefined;
       if (startStr && !rangeStart) {
-        const d = new Date(startStr);
+        const d = parseDateLocal(startStr);
         if (!isNaN(d.getTime())) {
           if (!minDate || d < minDate) minDate = d;
         }
       }
       if (dueStr && !rangeEnd) {
-        const d = new Date(dueStr);
+        const d = parseDateLocal(dueStr);
         if (!isNaN(d.getTime())) {
           if (!maxDate || d > maxDate) maxDate = d;
         }
@@ -170,7 +179,6 @@ export function dateToBarPosition(
     const end = colEnd(start, granularity);
     if (date < end) {
       if (date < start) {
-        // 先頭列より前 → クランプ
         return { colIndex: 0, offset: 0 };
       }
       const offset = (date.getTime() - start.getTime()) / (end.getTime() - start.getTime());
@@ -178,7 +186,6 @@ export function dateToBarPosition(
     }
   }
 
-  // 末尾列より後 → クランプ
   return { colIndex: timeCols.length - 1, offset: 1 };
 }
 
