@@ -32,13 +32,15 @@ interface DragHandleProps {
   currentStart: BarPosition;
   currentEnd: BarPosition;
   containerRef: React.RefObject<HTMLTableRowElement>;
+  /** BarOverlay の left オフセット（行ヘッダ幅）。ドラッグ位置計算に使用 */
+  overlayLeft: number;
   onPreviewChange: (start: BarPosition, end: BarPosition) => void;
   onDragComplete: (start: BarPosition, end: BarPosition) => void;
 }
 
 function DragHandle({
   type, entity, barDef, rowChain, colChains, totalColumns,
-  currentStart, currentEnd, containerRef,
+  currentStart, currentEnd, containerRef, overlayLeft,
   onPreviewChange, onDragComplete,
 }: DragHandleProps) {
   const dragStartX = useRef<number | null>(null);
@@ -47,9 +49,11 @@ function DragHandle({
 
   const calcPositions = useCallback((pointerX: number): { start: BarPosition; end: BarPosition } => {
     const container = containerRef.current;
-    const containerWidth = container ? container.getBoundingClientRect().width : 1;
-    const rect = container ? container.getBoundingClientRect() : { left: 0 };
-    const relativeX = pointerX - rect.left;
+    const rect = container ? container.getBoundingClientRect() : { left: 0, width: 1 };
+    // データ列領域の幅（行ヘッダを除く）
+    const containerWidth = rect.width - overlayLeft;
+    // ポインタ位置をデータ列領域の左端基準に変換
+    const relativeX = pointerX - rect.left - overlayLeft;
 
     if (type === 'start') {
       const newStart = pointerToBarPosition(relativeX, containerWidth, totalColumns);
@@ -144,9 +148,13 @@ interface BarElementProps {
   colChains: unknown[][];
   totalColumns: number;
   containerRef: React.RefObject<HTMLTableRowElement>;
+  laneTop: number;
+  laneHeight: number;
+  /** BarOverlay の left オフセット（行ヘッダ幅）。ドラッグ位置計算に使用 */
+  overlayLeft: number;
 }
 
-function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef }: BarElementProps) {
+function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef, laneTop, laneHeight, overlayLeft }: BarElementProps) {
   const [preview, setPreview] = useState<{ start: BarPosition; end: BarPosition } | null>(null);
 
   const { start: baseStart, end: baseEnd } = barDef.position(entity, colChains);
@@ -159,10 +167,11 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
   const left = barToLeftPercent(start, totalColumns);
   const right = barToRightPercent(end, totalColumns);
 
+  const PADDING = 3; // px 上下パディング
   const defaultStyle: CSSProperties = {
     position: 'absolute',
-    top: '10%',
-    bottom: '10%',
+    top: laneTop + PADDING,
+    height: laneHeight - PADDING * 2,
     left: `${left}%`,
     right: `${right}%`,
     backgroundColor: '#1976d2',
@@ -211,6 +220,7 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
           currentStart={start}
           currentEnd={end}
           containerRef={containerRef}
+          overlayLeft={overlayLeft}
           onPreviewChange={handlePreviewChange}
           onDragComplete={handleStartDragComplete}
         />
@@ -226,6 +236,7 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
           currentStart={start}
           currentEnd={end}
           containerRef={containerRef}
+          overlayLeft={overlayLeft}
           onPreviewChange={handlePreviewChange}
           onDragComplete={handleMoveDragComplete}
         />
@@ -241,6 +252,7 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
           currentStart={start}
           currentEnd={end}
           containerRef={containerRef}
+          overlayLeft={overlayLeft}
           onPreviewChange={handlePreviewChange}
           onDragComplete={handleEndDragComplete}
         />
@@ -286,16 +298,70 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
 
 // ---- BarOverlay ----
 
+const BAR_LANE_HEIGHT = 28; // px per lane
+
+/** バーの重なりを検出してレーン番号を割り当てる */
+function assignLanes(
+  bars: { startVal: number; endVal: number }[],
+): number[] {
+  const lanes: number[] = new Array(bars.length).fill(0);
+  // 各レーンの現在の終端値
+  const laneEnds: number[] = [];
+
+  for (let i = 0; i < bars.length; i++) {
+    const { startVal, endVal } = bars[i];
+    // 空いている最小レーンを探す
+    let assigned = -1;
+    for (let l = 0; l < laneEnds.length; l++) {
+      if (laneEnds[l] <= startVal) {
+        assigned = l;
+        break;
+      }
+    }
+    if (assigned === -1) {
+      assigned = laneEnds.length;
+      laneEnds.push(endVal);
+    } else {
+      laneEnds[assigned] = endVal;
+    }
+    lanes[i] = assigned;
+  }
+  return lanes;
+}
+
 interface BarOverlayProps {
   barDef: BarDef;
   rowChain: unknown[];
   colChains: unknown[][];
   entities: Record<EntityType, FlowEntity[]>;
   totalColumns: number;
+  /** 行ヘッダセル（最初の td）への ref。バー位置のオフセット計算に使用 */
+  headerCellRef: React.RefObject<HTMLTableCellElement>;
   containerRef: React.RefObject<HTMLTableRowElement>;
+  /** レーン数が確定したときに親へ通知 */
+  onLaneCount: (count: number) => void;
 }
 
-function BarOverlay({ barDef, rowChain, colChains, entities, totalColumns, containerRef }: BarOverlayProps) {
+function BarOverlay({
+  barDef, rowChain, colChains, entities, totalColumns,
+  headerCellRef, containerRef, onLaneCount,
+}: BarOverlayProps) {
+  // ヘッダ幅・行幅を ResizeObserver で監視して正確に取得
+  const [headerWidth, setHeaderWidth] = useState(0);
+  const [rowWidth, setRowWidth] = useState(0);
+
+  React.useEffect(() => {
+    const updateSizes = () => {
+      setHeaderWidth(headerCellRef.current?.getBoundingClientRect().width ?? 0);
+      setRowWidth(containerRef.current?.getBoundingClientRect().width ?? 0);
+    };
+    updateSizes();
+    const ro = new ResizeObserver(updateSizes);
+    if (headerCellRef.current) ro.observe(headerCellRef.current);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [headerCellRef, containerRef]);
+
   const allEntities = entities[barDef.entityType] ?? [];
   const filtered = barDef.filter
     ? allEntities.filter((e) => {
@@ -303,19 +369,50 @@ function BarOverlay({ barDef, rowChain, colChains, entities, totalColumns, conta
       })
     : allEntities;
 
+  // 各バーの start/end 値を計算
+  const barInfos = filtered.map((entity) => {
+    const { start, end } = barDef.position(entity, colChains);
+    const startVal = start.colIndex + start.offset;
+    const endVal = end.colIndex + end.offset;
+    return { entity, startVal, endVal, valid: startVal <= endVal && start.colIndex >= 0 };
+  });
+
+  const validBars = barInfos.filter((b) => b.valid);
+  const lanes = assignLanes(validBars.map((b) => ({ startVal: b.startVal, endVal: b.endVal })));
+  const laneCount = lanes.length > 0 ? Math.max(...lanes) + 1 : 1;
+
+  React.useEffect(() => {
+    onLaneCount(laneCount);
+  }, [laneCount, onLaneCount]);
+
+  const dataWidth = rowWidth - headerWidth;
+  const totalHeight = laneCount * BAR_LANE_HEIGHT;
+
+  let validIdx = 0;
   return (
-    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
-      {filtered.map((entity) => (
-        <BarElement
-          key={entity.id}
-          entity={entity}
-          barDef={barDef}
-          rowChain={rowChain}
-          colChains={colChains}
-          totalColumns={totalColumns}
-          containerRef={containerRef}
-        />
-      ))}
+    <div style={{
+      position: 'absolute', top: 0, left: headerWidth, width: dataWidth,
+      height: totalHeight, pointerEvents: 'none',
+    }}>
+      {barInfos.map((info) => {
+        if (!info.valid) return null;
+        const lane = lanes[validIdx++];
+        const top = lane * BAR_LANE_HEIGHT;
+        return (
+          <BarElement
+            key={info.entity.id}
+            entity={info.entity}
+            barDef={barDef}
+            rowChain={rowChain}
+            colChains={colChains}
+            totalColumns={totalColumns}
+            containerRef={containerRef}
+            laneTop={top}
+            laneHeight={BAR_LANE_HEIGHT}
+            overlayLeft={headerWidth}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -531,6 +628,12 @@ function RowRenderer({
   const children = isOpen ? node.buildChildren() : [];
 
   const containerRef = useRef<HTMLTableRowElement>(null);
+  const headerCellRef = useRef<HTMLTableCellElement>(null);
+  const [laneCount, setLaneCount] = useState(1);
+
+  const handleLaneCount = useCallback((count: number) => {
+    setLaneCount((prev) => prev !== count ? count : prev);
+  }, []);
 
   const rowVal = chain[chain.length - 1];
 
@@ -548,6 +651,9 @@ function RowRenderer({
   const menuItems = collectContextMenuItems(rowDef, depth);
   const hasMenu = menuItems.length > 0;
 
+  // バーがある場合は laneCount に応じて行の高さを設定
+  const rowHeight = node.barDef ? laneCount * BAR_LANE_HEIGHT : undefined;
+
   return (
     <>
       <TableRow
@@ -557,9 +663,16 @@ function RowRenderer({
             ? (e) => onContextMenu(e, menuItems, { rowChain: chain, colChain: [], entities: cellEntities })
             : undefined
         }
-        sx={{ position: 'relative', "& > td": { borderBottom: hasChildren && isOpen ? "none" : undefined } }}
+        sx={{
+          position: 'relative',
+          height: rowHeight,
+          "& > td": { borderBottom: hasChildren && isOpen ? "none" : undefined },
+        }}
       >
-        <TableCell style={{ ...rowStyle, paddingLeft: 8 + depth * 20, whiteSpace: "nowrap", width: 1 }}>
+        <TableCell
+          ref={headerCellRef}
+          style={{ ...rowStyle, paddingLeft: 8 + depth * 20, whiteSpace: "nowrap", width: 1, verticalAlign: 'middle' }}
+        >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             {hasChildren ? (
               <IconButton size="small" onClick={() => onToggle(rowKey)} sx={{ p: 0.25 }}>
@@ -634,7 +747,9 @@ function RowRenderer({
               colChains={colChains}
               entities={entities}
               totalColumns={colChains.length}
+              headerCellRef={headerCellRef}
               containerRef={containerRef}
+              onLaneCount={handleLaneCount}
             />
           </TableCell>
         )}
