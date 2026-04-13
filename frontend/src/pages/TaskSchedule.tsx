@@ -123,6 +123,18 @@ export function TaskSchedule() {
       return { start, end };
     },
     label: (task) => String(task['content'] ?? ''),
+    labelStart: (task) => {
+      const s = task['start_date'] as string | null | undefined;
+      if (!s) return null;
+      const d = parseDateLocal(s);
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    },
+    labelEnd: (task) => {
+      const s = task['due_date'] as string | null | undefined;
+      if (!s) return null;
+      const d = parseDateLocal(s);
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    },
     style: (task) => getTaskStyle(task),
     onDragStart: (task, _rowChain, newPosition) => {
       const newDate = barPositionToDate(newPosition, timeCols, granularity);

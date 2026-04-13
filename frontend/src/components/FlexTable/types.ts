@@ -15,7 +15,12 @@ export interface BarDef {
   onDragStart?: (entity: FlowEntity, rowChain: unknown[], newPosition: BarPosition) => void;
   onDragEnd?: (entity: FlowEntity, rowChain: unknown[], newPosition: BarPosition) => void;
   onDragMove?: (entity: FlowEntity, rowChain: unknown[], newStart: BarPosition, newEnd: BarPosition) => void;
+  /** バー中央に表示するラベル（デフォルト） */
   label: (entity: FlowEntity) => ReactNode;
+  /** バー左端に左詰めで表示するラベル（省略可） */
+  labelStart?: (entity: FlowEntity) => ReactNode;
+  /** バー右端に右詰めで表示するラベル（省略可） */
+  labelEnd?: (entity: FlowEntity) => ReactNode;
   style?: (entity: FlowEntity) => CSSProperties;
 }
 
