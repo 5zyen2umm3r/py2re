@@ -15,6 +15,7 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { DynamicFormProps, FieldDef, NumberField } from "./types";
+import { useEntities } from "../../context/EntityContext";
 
 function FieldRenderer({
   field,
@@ -24,6 +25,9 @@ function FieldRenderer({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   control: any;
 }) {
+  // entity フィールド用にエンティティリストを取得
+  const { getList } = useEntities();
+
   switch (field.type) {
     case "readonly":
       return (
@@ -64,6 +68,37 @@ function FieldRenderer({
           )}
         />
       );
+
+    case "entity": {
+      const entityList = getList(field.entityType);
+      const labelField = field.labelField ?? "name";
+      const options = entityList.map((e) => ({
+        value: e.id,
+        label: String(e[labelField] ?? e.id),
+      }));
+      return (
+        <Controller
+          name={field.name}
+          control={control}
+          rules={{ required: field.required }}
+          render={({ field: f, fieldState }) => (
+            <MuiTextField
+              {...f}
+              select
+              label={field.label}
+              size="small"
+              fullWidth
+              error={!!fieldState.error}
+              helperText={fieldState.error?.message}
+            >
+              {options.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+              ))}
+            </MuiTextField>
+          )}
+        />
+      );
+    }
 
     case "date":
       return (

@@ -104,4 +104,6 @@ export interface FlexTableProps {
   columns: ColumnDef[];
   rows: RowDef[];
   entities: Record<EntityType, FlowEntity[]>;
+  /** 列ヘッダを縦スクロール時に固定するか（デフォルト: true） */
+  stickyHeader?: boolean;
 }

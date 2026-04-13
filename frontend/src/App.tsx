@@ -2,8 +2,10 @@ import React, { useEffect } from "react";
 import { HashRouter, Routes, Route, NavLink } from "react-router-dom";
 import {
   CssBaseline, AppBar, Toolbar, Typography, Button, Box, Tabs, Tab,
+  Tooltip,
 } from "@mui/material";
 import { EntityProvider, useEntities } from "./context/EntityContext";
+import { ScheduleFilterProvider } from "./context/ScheduleFilterContext";
 import { EstimationTable } from "./components/EstimationTable";
 import { EntityBrowser } from "./pages/EntityBrowser";
 import { TaskSchedule } from "./pages/TaskSchedule";
@@ -17,7 +19,7 @@ const NAV_TABS = [
 ];
 
 function AppContent() {
-  const { loadAll, undo, redo, canUndo, canRedo, commit } = useEntities();
+  const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, commit } = useEntities();
 
   useEffect(() => {
     initQtChannel().then(() => loadAll());
@@ -51,8 +53,30 @@ function AppContent() {
             ))}
           </Tabs>
 
-          <Button color="inherit" disabled={!canUndo} onClick={undo}>Undo</Button>
-          <Button color="inherit" disabled={!canRedo} onClick={redo}>Redo</Button>
+          <Tooltip title={`全て元に戻す（${pastCount}件）`}>
+            <span>
+              <Button color="inherit" disabled={!canUndo} onClick={undoAll} sx={{ minWidth: 0, px: 1 }}>
+                ↩↩
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={`元に戻す（残り${pastCount}件）`}>
+            <span>
+              <Button color="inherit" disabled={!canUndo} onClick={undo}>Undo</Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={`やり直す（残り${futureCount}件）`}>
+            <span>
+              <Button color="inherit" disabled={!canRedo} onClick={redo}>Redo</Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={`全てやり直す（${futureCount}件）`}>
+            <span>
+              <Button color="inherit" disabled={!canRedo} onClick={redoAll} sx={{ minWidth: 0, px: 1 }}>
+                ↪↪
+              </Button>
+            </span>
+          </Tooltip>
           <Button color="inherit" onClick={() => commit("Estimation")}>Commit</Button>
         </Toolbar>
       </AppBar>
@@ -89,8 +113,10 @@ export default function App() {
   return (
     <HashRouter>
       <EntityProvider>
-        <CssBaseline />
-        <AppContent />
+        <ScheduleFilterProvider>
+          <CssBaseline />
+          <AppContent />
+        </ScheduleFilterProvider>
       </EntityProvider>
     </HashRouter>
   );

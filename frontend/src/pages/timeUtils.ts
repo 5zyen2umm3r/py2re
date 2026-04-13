@@ -49,28 +49,38 @@ function colEnd(colStart: Date, granularity: TimeGranularity): Date {
 /**
  * 全タスクの start_date / due_date から時系列列配列を生成する。
  * 最低4週間を保証し、granularity に応じた列を返す。
+ * rangeStart / rangeEnd が指定された場合はその範囲を優先する。
  */
-export function generateTimeCols(tasks: FlowEntity[], granularity: TimeGranularity): Date[] {
+export function generateTimeCols(
+  tasks: FlowEntity[],
+  granularity: TimeGranularity,
+  rangeStart?: string | null,
+  rangeEnd?: string | null,
+): Date[] {
   const MIN_WEEKS = 4;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  let minDate: Date | null = null;
-  let maxDate: Date | null = null;
+  // 外部指定の範囲があればそれを優先
+  let minDate: Date | null = rangeStart ? new Date(rangeStart) : null;
+  let maxDate: Date | null = rangeEnd ? new Date(rangeEnd) : null;
 
-  for (const task of tasks) {
-    const startStr = task['start_date'] as string | null | undefined;
-    const dueStr = task['due_date'] as string | null | undefined;
-    if (startStr) {
-      const d = new Date(startStr);
-      if (!isNaN(d.getTime())) {
-        if (!minDate || d < minDate) minDate = d;
+  // タスクの日付範囲でさらに拡張（外部指定がない場合はタスクから算出）
+  if (!minDate || !maxDate) {
+    for (const task of tasks) {
+      const startStr = task['start_date'] as string | null | undefined;
+      const dueStr = task['due_date'] as string | null | undefined;
+      if (startStr && !rangeStart) {
+        const d = new Date(startStr);
+        if (!isNaN(d.getTime())) {
+          if (!minDate || d < minDate) minDate = d;
+        }
       }
-    }
-    if (dueStr) {
-      const d = new Date(dueStr);
-      if (!isNaN(d.getTime())) {
-        if (!maxDate || d > maxDate) maxDate = d;
+      if (dueStr && !rangeEnd) {
+        const d = new Date(dueStr);
+        if (!isNaN(d.getTime())) {
+          if (!maxDate || d > maxDate) maxDate = d;
+        }
       }
     }
   }
@@ -130,7 +140,11 @@ export function formatColHeader(date: Date, granularity: TimeGranularity): strin
     }
     case 'week': {
       const { year, week } = getISOWeek(date);
-      return `${year}-W${String(week).padStart(2, '0')}`;
+      // 月曜日の日付も表示: YYYY-MM-DD~ (Www)
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}~ (W${String(week).padStart(2, '0')})`;
     }
     case 'month': {
       const y = date.getFullYear();

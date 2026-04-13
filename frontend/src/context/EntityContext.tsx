@@ -48,8 +48,11 @@ type Action =
   | { kind: "CREATE"; entityType: EntityType; entity: FlowEntity; tempId: string }
   | { kind: "DELETE"; entityType: EntityType; id: number | string }
   | { kind: "UNDO" }
+  | { kind: "UNDO_ALL" }
   | { kind: "REDO" }
-  | { kind: "CLEAR_PENDING" };
+  | { kind: "REDO_ALL" }
+  | { kind: "CLEAR_PENDING" }
+  | { kind: "RESTORE"; store: Pick<EntityStore, "state" | "past" | "future"> };
 
 const ENTITY_TYPES: EntityType[] = [
   "HumanUser",
@@ -204,6 +207,20 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         future: [entries, ...store.future],
       };
     }
+    case "UNDO_ALL": {
+      if (store.past.length === 0) return store;
+      let newState = store.state;
+      const allPast = [...store.past];
+      for (let i = allPast.length - 1; i >= 0; i--) {
+        for (const e of allPast[i]) newState = applyHistory(newState, e, "undo");
+      }
+      return {
+        ...store,
+        state: newState,
+        past: [],
+        future: [...allPast.reverse(), ...store.future],
+      };
+    }
     case "REDO": {
       if (store.future.length === 0) return store;
       const entries = store.future[0];
@@ -216,8 +233,24 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         future: store.future.slice(1),
       };
     }
+    case "REDO_ALL": {
+      if (store.future.length === 0) return store;
+      let newState = store.state;
+      const allFuture = [...store.future];
+      for (const group of allFuture) {
+        for (const e of group) newState = applyHistory(newState, e, "redo");
+      }
+      return {
+        ...store,
+        state: newState,
+        past: [...store.past, ...allFuture],
+        future: [],
+      };
+    }
     case "CLEAR_PENDING":
       return { ...store, pendingDiffs: [] };
+    case "RESTORE":
+      return { ...store, state: action.store.state, past: action.store.past, future: action.store.future };
     default:
       return store;
   }
@@ -229,13 +262,17 @@ interface EntityContextValue {
   state: StoreState;
   canUndo: boolean;
   canRedo: boolean;
+  pastCount: number;
+  futureCount: number;
   loadAll: () => Promise<void>;
   load: (type: EntityType) => Promise<void>;
   patch: (type: EntityType, id: number | string, data: Partial<FlowEntity>) => void;
   create: (type: EntityType, data: Partial<FlowEntity>) => void;
   remove: (type: EntityType, id: number | string) => void;
   undo: () => void;
+  undoAll: () => void;
   redo: () => void;
+  redoAll: () => void;
   commit: (type: EntityType) => Promise<void>;
   resolve: (
     ref: { type: EntityType; id: number } | null | undefined,
@@ -245,11 +282,28 @@ interface EntityContextValue {
 
 const EntityContext = createContext<EntityContextValue | null>(null);
 
+const LS_HISTORY_KEY = "entityHistory";
+
+function saveHistoryToLS(past: HistoryEntry[][], future: HistoryEntry[][]) {
+  try {
+    localStorage.setItem(LS_HISTORY_KEY, JSON.stringify({ past, future }));
+  } catch { /* ignore */ }
+}
+
+function loadHistoryFromLS(): { past: HistoryEntry[][]; future: HistoryEntry[][] } {
+  try {
+    const raw = localStorage.getItem(LS_HISTORY_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { past: [], future: [] };
+}
+
 export function EntityProvider({ children }: { children: ReactNode }) {
+  const savedHistory = loadHistoryFromLS();
   const [store, dispatch] = useReducer(reducer, {
     state: emptyState(),
-    past: [],
-    future: [],
+    past: savedHistory.past,
+    future: savedHistory.future,
     pendingDiffs: [],
   });
 
@@ -285,7 +339,14 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const undo = useCallback(() => dispatch({ kind: "UNDO" }), []);
+  const undoAll = useCallback(() => dispatch({ kind: "UNDO_ALL" }), []);
   const redo = useCallback(() => dispatch({ kind: "REDO" }), []);
+  const redoAll = useCallback(() => dispatch({ kind: "REDO_ALL" }), []);
+
+  // 履歴変化時に LocalStorage へ保存
+  React.useEffect(() => {
+    saveHistoryToLS(store.past, store.future);
+  }, [store.past, store.future]);
 
   const commit = useCallback(
     async (type: EntityType) => {
@@ -332,13 +393,17 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       state: store.state,
       canUndo: store.past.length > 0,
       canRedo: store.future.length > 0,
+      pastCount: store.past.length,
+      futureCount: store.future.length,
       loadAll,
       load,
       patch,
       create,
       remove,
       undo,
+      undoAll,
       redo,
+      redoAll,
       commit,
       resolve,
       getList,
@@ -351,7 +416,9 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       create,
       remove,
       undo,
+      undoAll,
       redo,
+      redoAll,
       commit,
       resolve,
       getList,

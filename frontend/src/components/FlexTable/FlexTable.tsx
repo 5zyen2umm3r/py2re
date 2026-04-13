@@ -642,7 +642,7 @@ function findSubHighlight(sub: SubAxis<unknown>, depth: number): ((v: unknown) =
 
 // ---- メインコンポーネント ----
 
-export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexTableProps) {
+export function FlexTable({ layout = "stacked", columns, rows, entities, stickyHeader = true }: FlexTableProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
   const [ctx, setCtx] = useState<CtxState | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -697,7 +697,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities }: FlexT
   return (
     <>
       <TableContainer component={Paper}>
-        <Table size="small" stickyHeader>
+        <Table size="small" stickyHeader={stickyHeader}>
           <TableHead>
             <TableRow>
               <TableCell />

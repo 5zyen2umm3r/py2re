@@ -10,15 +10,20 @@ import React, { useState, useCallback, useMemo } from "react";
 import {
   Box, FormControl, InputLabel, Select, MenuItem as MuiMenuItem, Typography,
 } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
 import { FlexTable } from "./FlexTable/FlexTable";
 import { ColumnDef, RowDef } from "./FlexTable/types";
 import { DynamicForm } from "./DynamicForm/DynamicForm";
 import { FieldDef } from "./DynamicForm/types";
 import { useEntities } from "../context/EntityContext";
+import { useScheduleFilter } from "../context/ScheduleFilterContext";
 import { FlowEntity } from "../api/entities";
 
 // ---- 月次列 ----
-const MONTHS: Date[] = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1));
+const ALL_MONTHS: Date[] = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1));
 
 function isSameMonth(dateStr: string | undefined, month: Date): boolean {
   if (!dateStr) return false;
@@ -38,11 +43,27 @@ type FormMode =
 
 export function EstimationTable() {
   const { state, patch, create, remove, getList } = useEntities();
+  const { selectedProjectIds, rangeStart, rangeEnd, setSelectedProjects, setRangeStart, setRangeEnd } = useScheduleFilter();
   const [selectedProjectId, setSelectedProjectId] = useState<number | "">("");
   const [formMode, setFormMode] = useState<FormMode>(null);
 
   const projects = getList("Project");
   const selectedProject = selectedProjectId !== "" ? state.Project[selectedProjectId] : undefined;
+
+  // 対象期間フィルタで月次列を絞り込む
+  const MONTHS = useMemo(() => {
+    return ALL_MONTHS.filter((m) => {
+      if (rangeStart) {
+        const rs = new Date(rangeStart);
+        if (m < new Date(rs.getFullYear(), rs.getMonth(), 1)) return false;
+      }
+      if (rangeEnd) {
+        const re = new Date(rangeEnd);
+        if (m > new Date(re.getFullYear(), re.getMonth(), 1)) return false;
+      }
+      return true;
+    });
+  }, [rangeStart, rangeEnd]);
 
   const allEntities = useMemo(() => ({
     HumanUser: getList("HumanUser"),
@@ -324,8 +345,8 @@ export function EstimationTable() {
   return (
     <Box>
       {/* Project選択 */}
-      <Box sx={{ mb: 2, maxWidth: 320 }}>
-        <FormControl fullWidth size="small">
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Project</InputLabel>
           <Select
             value={selectedProjectId}
@@ -338,6 +359,22 @@ export function EstimationTable() {
             ))}
           </Select>
         </FormControl>
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <DatePicker
+            label="対象期間 開始"
+            views={['year', 'month']}
+            value={rangeStart ? dayjs(rangeStart) : null}
+            onChange={(val) => setRangeStart(val ? val.format('YYYY-MM-DD') : null)}
+            slotProps={{ textField: { size: 'small' } }}
+          />
+          <DatePicker
+            label="対象期間 終了"
+            views={['year', 'month']}
+            value={rangeEnd ? dayjs(rangeEnd) : null}
+            onChange={(val) => setRangeEnd(val ? val.format('YYYY-MM-DD') : null)}
+            slotProps={{ textField: { size: 'small' } }}
+          />
+        </LocalizationProvider>
       </Box>
 
       <FlexTable

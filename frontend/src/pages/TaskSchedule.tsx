@@ -1,9 +1,14 @@
 import React, { CSSProperties, useState, useCallback, useMemo } from 'react';
 import { Box, Autocomplete, TextField } from '@mui/material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs from 'dayjs';
 import { useEntities } from '../context/EntityContext';
+import { useScheduleFilter } from '../context/ScheduleFilterContext';
 import { FlowEntity } from '../api/entities';
 import { FlexTable } from '../components/FlexTable/FlexTable';
-import { BarDef, BarPosition, ColumnDef, RowDef } from '../components/FlexTable/types';
+import { BarDef, ColumnDef, RowDef } from '../components/FlexTable/types';
 import { DynamicForm } from '../components/DynamicForm/DynamicForm';
 import {
   TimeGranularity,
@@ -33,56 +38,65 @@ function getTaskStyle(task: FlowEntity): CSSProperties {
   today.setHours(0, 0, 0, 0);
 
   if (status === 'fin') {
-    return { backgroundColor: '#9e9e9e' }; // グレー
+    return { backgroundColor: '#9e9e9e' };
   }
   if (dueDate) {
     const due = new Date(dueDate);
     if (due < today) {
-      return { backgroundColor: '#f44336' }; // 赤（遅延）
+      return { backgroundColor: '#f44336' };
     }
     const sevenDaysLater = new Date(today.getTime() + 7 * 86400000);
     if (due <= sevenDaysLater) {
-      return { backgroundColor: '#ff9800' }; // オレンジ（期限間近）
+      return { backgroundColor: '#ff9800' };
     }
   }
-  return { backgroundColor: '#1976d2' }; // 青（通常）
+  return { backgroundColor: '#1976d2' };
 }
 
 // ── メインコンポーネント ──────────────────────────────────────
 
 export function TaskSchedule() {
   const { getList, patch, create } = useEntities();
+  const {
+    selectedProjectIds, rangeStart, rangeEnd,
+    setSelectedProjects, setRangeStart, setRangeEnd,
+  } = useScheduleFilter();
 
   const [granularity, setGranularity] = useState<TimeGranularity>('week');
-  const [selectedProjects, setSelectedProjects] = useState<FlowEntity[]>([]);
   const [formAsset, setFormAsset] = useState<FlowEntity | null>(null);
 
   const tasks = getList('Task');
   const assets = getList('Asset');
   const projects = getList('Project');
+  const users = getList('HumanUser');
+
+  // Context から selectedProjects を復元
+  const selectedProjects = useMemo(
+    () => projects.filter((p) => selectedProjectIds.includes(p.id as number)),
+    [projects, selectedProjectIds],
+  );
 
   // プロジェクトフィルタ
   const filteredAssets = selectedProjects.length === 0
     ? assets
     : assets.filter(a => selectedProjects.some(p => (a['project'] as any)?.id === p.id));
 
-  // 時系列列配列
+  // 時系列列配列（対象期間を反映）
   const timeCols = useMemo(
-    () => generateTimeCols(tasks, granularity),
-    [tasks, granularity],
+    () => generateTimeCols(tasks, granularity, rangeStart, rangeEnd),
+    [tasks, granularity, rangeStart, rangeEnd],
   );
 
-  // ホイールで粒度切り替え
+  // Ctrl+ホイールで粒度切り替え
   const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.ctrlKey) return;
     e.preventDefault();
     setGranularity((prev) => {
       if (e.deltaY < 0) {
-        // 上スクロール: month → week → day
         if (prev === 'month') return 'week';
         if (prev === 'week') return 'day';
         return prev;
       } else {
-        // 下スクロール: day → week → month
         if (prev === 'day') return 'week';
         if (prev === 'week') return 'month';
         return prev;
@@ -94,7 +108,7 @@ export function TaskSchedule() {
   const barDef: BarDef = useMemo(() => ({
     entityType: 'Task',
     filter: (task, rowChain) =>
-      (task['sg_asset'] as any)?.id === (rowChain[0] as FlowEntity)?.id,
+      (task['entity'] as any)?.id === (rowChain[0] as FlowEntity)?.id,
     position: (task, _colChains) => {
       const startStr = task['start_date'] as string | null | undefined;
       const dueStr = task['due_date'] as string | null | undefined;
@@ -157,59 +171,109 @@ export function TaskSchedule() {
     Task: tasks,
     Asset: filteredAssets,
     Project: projects,
-    HumanUser: [],
+    HumanUser: users,
     Phase: [],
     Step: [],
     Estimation: [],
-  }), [tasks, filteredAssets, projects]);
+  }), [tasks, filteredAssets, projects, users]);
+
+  // タスク追加フォームのフィールド定義
+  const taskFormFields = useMemo(() => [
+    {
+      name: 'entity',
+      label: 'アセット',
+      type: 'readonly' as const,
+      render: () => String(formAsset?.['code'] ?? formAsset?.id ?? ''),
+    },
+    {
+      name: 'content',
+      label: 'タスク名',
+      type: 'text' as const,
+      required: true,
+    },
+    {
+      name: 'start_date',
+      label: '開始日',
+      type: 'date' as const,
+      required: true,
+    },
+    {
+      name: 'due_date',
+      label: '期限日',
+      type: 'date' as const,
+      required: true,
+    },
+    {
+      name: 'sg_user',
+      label: '担当ユーザ',
+      type: 'entity' as const,
+      entityType: 'HumanUser' as const,
+      labelField: 'name',
+      required: false,
+    },
+  ], [formAsset]);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* プロジェクト選択欄 */}
-      <Box sx={{ p: 1 }}>
-        <Autocomplete
-          multiple
-          options={projects}
-          getOptionLabel={(p) => String(p['name'] ?? p.id)}
-          value={selectedProjects}
-          onChange={(_e, val) => setSelectedProjects(val)}
-          renderInput={(params) => (
-            <TextField {...params} label="プロジェクト" size="small" />
-          )}
-          sx={{ maxWidth: 600 }}
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        {/* フィルタバー */}
+        <Box sx={{ p: 1, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Autocomplete
+            multiple
+            options={projects}
+            getOptionLabel={(p) => String(p['name'] ?? p.id)}
+            value={selectedProjects}
+            onChange={(_e, val) => setSelectedProjects(val)}
+            renderInput={(params) => (
+              <TextField {...params} label="プロジェクト" size="small" />
+            )}
+            sx={{ minWidth: 240 }}
+          />
+          <DatePicker
+            label="開始日"
+            value={rangeStart ? dayjs(rangeStart) : null}
+            onChange={(val) => setRangeStart(val ? val.format('YYYY-MM-DD') : null)}
+            slotProps={{ textField: { size: 'small' } }}
+          />
+          <DatePicker
+            label="終了日"
+            value={rangeEnd ? dayjs(rangeEnd) : null}
+            onChange={(val) => setRangeEnd(val ? val.format('YYYY-MM-DD') : null)}
+            slotProps={{ textField: { size: 'small' } }}
+          />
+        </Box>
+
+        {/* ガントテーブル（Ctrl+ホイールで粒度切り替え） */}
+        <Box sx={{ flex: 1, overflow: 'auto' }} onWheel={handleWheel}>
+          <FlexTable
+            columns={columns}
+            rows={[assetRowDef]}
+            entities={entities}
+          />
+        </Box>
+
+        {/* タスク追加フォーム */}
+        <DynamicForm
+          title="タスクを追加"
+          open={formAsset !== null}
+          onClose={() => setFormAsset(null)}
+          fields={taskFormFields}
+          defaultValues={{ entity: formAsset?.id }}
+          onSubmit={(values) => {
+            if (!formAsset) return;
+            create('Task', {
+              entity: { type: 'Asset', id: formAsset.id },
+              content: values['content'],
+              start_date: values['start_date'],
+              due_date: values['due_date'],
+              sg_user: values['sg_user']
+                ? { type: 'HumanUser', id: values['sg_user'] }
+                : undefined,
+            });
+            setFormAsset(null);
+          }}
         />
       </Box>
-
-      {/* ガントテーブル */}
-      <Box sx={{ flex: 1, overflow: 'auto' }} onWheel={handleWheel}>
-        <FlexTable
-          columns={columns}
-          rows={[assetRowDef]}
-          entities={entities}
-        />
-      </Box>
-
-      {/* タスク追加フォーム */}
-      <DynamicForm
-        title="タスクを追加"
-        open={formAsset !== null}
-        onClose={() => setFormAsset(null)}
-        fields={[
-          { name: 'content', label: 'タスク名', type: 'text', required: true },
-          { name: 'start_date', label: '開始日', type: 'date', required: true },
-          { name: 'due_date', label: '期限日', type: 'date', required: true },
-        ]}
-        onSubmit={(values) => {
-          if (!formAsset) return;
-          create('Task', {
-            sg_asset: { type: 'Asset', id: formAsset.id },
-            content: values['content'],
-            start_date: values['start_date'],
-            due_date: values['due_date'],
-          });
-          setFormAsset(null);
-        }}
-      />
-    </Box>
+    </LocalizationProvider>
   );
 }
