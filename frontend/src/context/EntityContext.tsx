@@ -52,7 +52,9 @@ type Action =
   | { kind: "REDO" }
   | { kind: "REDO_ALL" }
   | { kind: "CLEAR_PENDING" }
-  | { kind: "RESTORE"; store: Pick<EntityStore, "state" | "past" | "future"> };
+  | { kind: "RESTORE"; store: Pick<EntityStore, "state" | "past" | "future"> }
+  /** LOAD 完了後に past の最新 after を state にマージして履歴を反映する */
+  | { kind: "APPLY_PAST_TO_STATE" };
 
 const ENTITY_TYPES: EntityType[] = [
   "HumanUser",
@@ -251,6 +253,27 @@ function reducer(store: EntityStore, action: Action): EntityStore {
       return { ...store, pendingDiffs: [] };
     case "RESTORE":
       return { ...store, state: action.store.state, past: action.store.past, future: action.store.future };
+    case "APPLY_PAST_TO_STATE": {
+      // past の全エントリを古い順に再適用して最新 state を再構築する
+      // LOAD で取得したサーバー state をベースに、past の変更を上書きする
+      let newState = store.state;
+      for (const group of store.past) {
+        for (const entry of group) {
+          if (entry.after !== undefined) {
+            newState = {
+              ...newState,
+              [entry.type]: { ...newState[entry.type], [entry.id]: entry.after },
+            };
+          } else {
+            // after が undefined = 削除操作
+            const map = { ...newState[entry.type] };
+            delete map[entry.id];
+            newState = { ...newState, [entry.type]: map };
+          }
+        }
+      }
+      return { ...store, state: newState };
+    }
     default:
       return store;
   }
@@ -274,6 +297,7 @@ interface EntityContextValue {
   redo: () => void;
   redoAll: () => void;
   commit: (type: EntityType) => Promise<void>;
+  commitAll: () => Promise<void>;
   resolve: (
     ref: { type: EntityType; id: number } | null | undefined,
   ) => FlowEntity | undefined;
@@ -314,6 +338,8 @@ export function EntityProvider({ children }: { children: ReactNode }) {
 
   const loadAll = useCallback(async () => {
     await Promise.all(ENTITY_TYPES.map(load));
+    // LocalStorage から復元した past を state に反映する
+    dispatch({ kind: "APPLY_PAST_TO_STATE" });
   }, [load]);
 
   const patch = useCallback(
@@ -375,6 +401,28 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     [store.pendingDiffs],
   );
 
+  const commitAll = useCallback(async () => {
+    for (const d of store.pendingDiffs) {
+      const cleanPatch = Object.fromEntries(
+        Object.entries(d.patch).filter(
+          ([k, v]) =>
+            k !== "_diff_id" &&
+            k !== "id" &&
+            !(typeof v === "string" && v.startsWith("_new_"))
+        )
+      ) as Partial<FlowEntity>;
+
+      if (d.action === "create") {
+        await entityApi.create(d.type, cleanPatch);
+      } else if (d.action === "update" && typeof d.id === "number") {
+        await entityApi.update(d.type, d.id, cleanPatch);
+      } else if (d.action === "delete" && typeof d.id === "number") {
+        await entityApi.delete(d.type, d.id);
+      }
+    }
+    dispatch({ kind: "CLEAR_PENDING" });
+  }, [store.pendingDiffs]);
+
   const resolve = useCallback(
     (ref: { type: EntityType; id: number } | null | undefined) => {
       if (!ref) return undefined;
@@ -405,6 +453,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       redo,
       redoAll,
       commit,
+      commitAll,
       resolve,
       getList,
     }),
@@ -420,6 +469,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       redo,
       redoAll,
       commit,
+      commitAll,
       resolve,
       getList,
     ],

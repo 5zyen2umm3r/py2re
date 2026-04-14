@@ -19,7 +19,7 @@ const NAV_TABS = [
 ];
 
 function AppContent() {
-  const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, commit } = useEntities();
+  const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, commitAll } = useEntities();
 
   useEffect(() => {
     initQtChannel().then(() => loadAll());
@@ -77,7 +77,7 @@ function AppContent() {
               </Button>
             </span>
           </Tooltip>
-          <Button color="inherit" onClick={() => commit("Estimation")}>Commit</Button>
+          <Button color="inherit" onClick={commitAll}>Commit</Button>
         </Toolbar>
       </AppBar>
 
