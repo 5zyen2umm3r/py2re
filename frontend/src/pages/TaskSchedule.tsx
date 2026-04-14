@@ -66,6 +66,7 @@ export function TaskSchedule() {
   const [granularity, setGranularity] = useState<TimeGranularity>('week');
   const [formAsset, setFormAsset] = useState<FlowEntity | null>(null);
   const [editTask, setEditTask] = useState<FlowEntity | null>(null);
+  const [addAssetProjectId, setAddAssetProjectId] = useState<number | null>(null);
 
   const tasks = getList('Task');
   const assets = getList('Asset');
@@ -185,12 +186,32 @@ export function TaskSchedule() {
     display: (asset) => String((asset as FlowEntity)?.['code'] ?? ''),
     bar: barDef,
     contextMenu: {
-      items: [{
-        label: 'タスクを追加',
-        action: ({ rowChain }) => setFormAsset(rowChain[0] as FlowEntity),
-      }],
+      items: [
+        {
+          label: 'タスクを追加',
+          action: ({ rowChain }) => setFormAsset(rowChain[0] as FlowEntity),
+        },
+        {
+          label: 'アセットを追加',
+          action: ({ rowChain }) => {
+            const asset = rowChain[0] as FlowEntity | null;
+            const projectId = (asset?.['project'] as any)?.id ?? null;
+            setAddAssetProjectId(projectId);
+          },
+        },
+        {
+          label: 'アセットを削除',
+          action: ({ rowChain }) => {
+            const asset = rowChain[0] as FlowEntity | null;
+            if (!asset?.id) return;
+            if (window.confirm(`アセット「${String(asset['code'] ?? asset.id)}」を削除しますか？`)) {
+              remove('Asset', asset.id);
+            }
+          },
+        },
+      ],
     },
-  }), [barDef]);
+  }), [barDef, remove]);
 
   // ColumnDef（時系列列）
   const columns: ColumnDef[] = useMemo(() => [{
@@ -244,6 +265,24 @@ export function TaskSchedule() {
       required: false,
     },
   ], [formAsset]);
+
+  // アセット追加フォームのフィールド定義
+  const addAssetFormFields = useMemo(() => [
+    {
+      name: 'code',
+      label: 'アセットコード',
+      type: 'text' as const,
+      required: true,
+    },
+    {
+      name: 'project',
+      label: 'プロジェクト',
+      type: 'entity' as const,
+      entityType: 'Project' as const,
+      labelField: 'name',
+      required: true,
+    },
+  ], []);
 
   // タスク編集フォームのフィールド定義
   const editTaskFormFields = useMemo(() => [
@@ -313,6 +352,24 @@ export function TaskSchedule() {
             entities={entities}
           />
         </Box>
+
+        {/* アセット追加フォーム */}
+        <DynamicForm
+          title="アセットを追加"
+          open={addAssetProjectId !== null}
+          onClose={() => setAddAssetProjectId(null)}
+          fields={addAssetFormFields}
+          defaultValues={{ project: addAssetProjectId ?? undefined }}
+          onSubmit={(values) => {
+            create('Asset', {
+              code: values['code'],
+              project: values['project']
+                ? { type: 'Project', id: values['project'] }
+                : undefined,
+            });
+            setAddAssetProjectId(null);
+          }}
+        />
 
         {/* タスク追加フォーム */}
         <DynamicForm

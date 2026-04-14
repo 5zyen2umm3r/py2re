@@ -150,6 +150,7 @@ export function EstimationTable() {
 
   // ---- 行1: HumanUser ----
   const rowUsers: RowDef<FlowEntity> = {
+    label: "ユーザ集計",
     entityType: "HumanUser",
     filter: selectedProject ? { "projects.id": selectedProject.id } : undefined,
     value: (entity) => entity ? [entity] : [],
@@ -175,6 +176,7 @@ export function EstimationTable() {
 
   // ---- 行2: Asset > HumanUser（副行） ----
   const rowAssets: RowDef<FlowEntity> = {
+    label: "工数見積",
     entityType: "Asset",
     filter: selectedProject ? { "project.id": selectedProject.id } : undefined,
     value: (entity) => entity ? [entity] : [],
