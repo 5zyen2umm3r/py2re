@@ -208,6 +208,7 @@ def sync_entity_type(
     full=True: フル取得（削除検出も行う）。
     project_ids: 対象Projectを絞り込む。None の場合は登録済み全Project。
     Project は専用テーブルに同期する（project_ids は Project自体のIDフィルタとして使用）。
+    config の "sync": false が設定されたエンティティはスキップする。
     """
     if sg is None:
         sg = get_sg_client()
@@ -220,6 +221,10 @@ def sync_entity_type(
     entity_cfg = config["entities"].get(entity_type)
     if entity_cfg is None:
         raise ValueError(f"Unknown entity type: {entity_type}")
+
+    # sync: false が設定されている場合はスキップ
+    if entity_cfg.get("sync", True) is False:
+        return {"skipped": True, "reason": "sync disabled in config"}
 
     last_synced = _get_last_synced(entity_type)
     sync_start = datetime.now(timezone.utc)
@@ -309,6 +314,10 @@ def sync_all(
 
     for entity_type in config["entities"]:
         if entity_type == "Project":
+            continue
+        # sync: false が設定されているエンティティはスキップ
+        if config["entities"][entity_type].get("sync", True) is False:
+            results[entity_type] = {"skipped": True, "reason": "sync disabled in config"}
             continue
         results[entity_type] = sync_entity_type(entity_type, sg, full=full, project_ids=project_ids)
 
@@ -452,6 +461,15 @@ def commit_diffs_to_flowpt(diff_ids: list[int] | None = None):
     temp_id_map: dict[str, int] = {}
 
     all_diffs = list(qs.order_by("created_at"))
+
+    # sync: false のエンティティは commit もスキップする
+    no_sync_types = {
+        et for et, cfg in config["entities"].items()
+        if cfg.get("sync", True) is False
+    }
+    if no_sync_types:
+        all_diffs = [d for d in all_diffs if d.entity_type not in no_sync_types]
+
     create_diffs = [d for d in all_diffs if d.action == "create"]
     other_diffs  = [d for d in all_diffs if d.action != "create"]
 
