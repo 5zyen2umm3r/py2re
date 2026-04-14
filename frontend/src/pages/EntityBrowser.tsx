@@ -1,16 +1,24 @@
 /**
- * EntityBrowser: EntityContextにキャッシュされたエンティティを閲覧するページ。
+ * EntityBrowser: EntityContextにキャッシュされたエンティティを閲覧・編集するページ。
  * EntityTypeごとにタブで切り替え、各エンティティのフィールドをテーブル表示する。
+ * 追加・編集・削除をサポートする。
  */
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   Box, Tab, Tabs, Typography, TextField, InputAdornment,
   Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, TableSortLabel, Paper, Chip, Tooltip,
+  IconButton, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import AddIcon from "@mui/icons-material/Add";
 import { useEntities } from "../context/EntityContext";
 import { EntityType, FlowEntity } from "../api/entities";
+import { DynamicForm } from "../components/DynamicForm/DynamicForm";
+import { FieldDef } from "../components/DynamicForm/types";
 
 const ENTITY_TYPES: EntityType[] = [
   "Project", "HumanUser", "Asset", "Task", "Phase", "Step", "Estimation",
@@ -22,7 +30,6 @@ function renderValue(val: unknown): React.ReactNode {
   if (val === null || val === undefined) return <Typography variant="caption" color="text.disabled">—</Typography>;
   if (typeof val === "boolean") return <Chip label={String(val)} size="small" variant="outlined" />;
   if (typeof val === "object") {
-    // エンティティ参照 { type, id, name? }
     if ("id" in (val as object)) {
       const ref = val as { type?: string; id: number; name?: string; code?: string };
       const label = ref.name ?? ref.code ?? `#${ref.id}`;
@@ -32,7 +39,6 @@ function renderValue(val: unknown): React.ReactNode {
         </Tooltip>
       );
     }
-    // 配列（複数参照など）
     if (Array.isArray(val)) {
       if (val.length === 0) return <Typography variant="caption" color="text.disabled">[]</Typography>;
       return (
@@ -49,14 +55,13 @@ function renderValue(val: unknown): React.ReactNode {
   return String(val);
 }
 
-// ---- カラム収集: 表示中エンティティ全体からキーを収集 ----
+// ---- カラム収集 ----
 
 function collectColumns(entities: FlowEntity[]): string[] {
   const keys = new Set<string>();
-  for (const e of entities.slice(0, 50)) {  // 先頭50件からキーを収集
+  for (const e of entities.slice(0, 50)) {
     Object.keys(e).forEach((k) => keys.add(k));
   }
-  // id を先頭に固定
   const sorted = [...keys].filter((k) => k !== "id").sort();
   return ["id", ...sorted];
 }
@@ -76,13 +81,40 @@ function sortEntities(entities: FlowEntity[], col: string, order: Order): FlowEn
   });
 }
 
+// ---- フィールド定義の動的生成 ----
+// エンティティのフィールドから DynamicForm 用の FieldDef を生成する
+
+function buildFieldDefs(columns: string[], entity?: FlowEntity): FieldDef[] {
+  return columns
+    .filter((col) => col !== "id" && col !== "type")
+    .map((col): FieldDef => {
+      const val = entity?.[col];
+      // 日付フィールドの推定
+      if (col.endsWith("_date") || col === "sg_month") {
+        return { name: col, label: col, type: "date" };
+      }
+      // 数値フィールドの推定
+      if (typeof val === "number" || col.endsWith("_hours") || col.endsWith("_months")) {
+        return { name: col, label: col, type: "number", step: 0.01 };
+      }
+      // オブジェクト参照（エンティティ参照）はテキストで表示
+      if (val !== null && val !== undefined && typeof val === "object" && !Array.isArray(val)) {
+        return { name: col, label: col, type: "text" };
+      }
+      return { name: col, label: col, type: "text" };
+    });
+}
+
 // ---- エンティティテーブル ----
 
 function EntityTable({ entityType }: { entityType: EntityType }) {
-  const { getList } = useEntities();
+  const { getList, patch, create, remove } = useEntities();
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState("id");
   const [sortOrder, setSortOrder] = useState<Order>("asc");
+  const [editTarget, setEditTarget] = useState<FlowEntity | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<FlowEntity | null>(null);
 
   const allEntities = getList(entityType);
 
@@ -110,17 +142,49 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
     }
   };
 
-  if (allEntities.length === 0) {
-    return (
-      <Box sx={{ p: 4, textAlign: "center" }}>
-        <Typography color="text.secondary">データなし（未同期の可能性があります）</Typography>
-      </Box>
+  // 編集フォームのフィールド定義
+  const editFields = useMemo(
+    () => buildFieldDefs(columns, editTarget ?? undefined),
+    [columns, editTarget]
+  );
+
+  // 追加フォームのフィールド定義（既存エンティティのキーを参考に）
+  const addFields = useMemo(
+    () => buildFieldDefs(columns, allEntities[0]),
+    [columns, allEntities]
+  );
+
+  // 編集フォームのデフォルト値
+  const editDefaultValues = useMemo(() => {
+    if (!editTarget) return {};
+    return Object.fromEntries(
+      Object.entries(editTarget).filter(([k]) => k !== "id" && k !== "type")
     );
-  }
+  }, [editTarget]);
+
+  const handleEditSubmit = useCallback((values: Record<string, unknown>) => {
+    if (!editTarget) return;
+    patch(entityType, editTarget.id, values);
+    setEditTarget(null);
+  }, [editTarget, entityType, patch]);
+
+  const handleAddSubmit = useCallback((values: Record<string, unknown>) => {
+    create(entityType, values);
+    setAddOpen(false);
+  }, [entityType, create]);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteTarget) return;
+    remove(entityType, deleteTarget.id);
+    setDeleteTarget(null);
+  }, [deleteTarget, entityType, remove]);
+
+  const entityLabel = (e: FlowEntity) =>
+    String(e["name"] ?? e["code"] ?? e["content"] ?? e.id);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%", gap: 1 }}>
-      {/* 検索バー */}
+      {/* ツールバー */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         <TextField
           size="small"
@@ -139,6 +203,15 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
         <Typography variant="caption" color="text.secondary">
           {filtered.length} / {allEntities.length} 件
         </Typography>
+        <Box sx={{ flex: 1 }} />
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => setAddOpen(true)}
+        >
+          追加
+        </Button>
       </Box>
 
       {/* テーブル */}
@@ -146,6 +219,7 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
+              <TableCell sx={{ width: 80, fontWeight: "bold" }}>操作</TableCell>
               {columns.map((col) => (
                 <TableCell key={col} sx={{ whiteSpace: "nowrap", fontWeight: "bold" }}>
                   <TableSortLabel
@@ -160,8 +234,30 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
             </TableRow>
           </TableHead>
           <TableBody>
+            {sorted.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={columns.length + 1} align="center">
+                  <Typography color="text.secondary" variant="caption">
+                    {allEntities.length === 0 ? "データなし（未同期の可能性があります）" : "検索結果なし"}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
             {sorted.map((entity) => (
               <TableRow key={entity.id} hover>
+                {/* 操作ボタン */}
+                <TableCell sx={{ whiteSpace: "nowrap", p: 0.5 }}>
+                  <Tooltip title="編集">
+                    <IconButton size="small" onClick={() => setEditTarget(entity)}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="削除">
+                    <IconButton size="small" color="error" onClick={() => setDeleteTarget(entity)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
                 {columns.map((col) => (
                   <TableCell key={col} sx={{ maxWidth: 240, overflow: "hidden" }}>
                     {renderValue(entity[col])}
@@ -172,6 +268,42 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* 編集フォーム */}
+      <DynamicForm
+        title={`${entityType} を編集 (ID: ${editTarget?.id})`}
+        open={editTarget !== null}
+        onClose={() => setEditTarget(null)}
+        fields={editFields}
+        defaultValues={editDefaultValues}
+        onSubmit={handleEditSubmit}
+      />
+
+      {/* 追加フォーム */}
+      <DynamicForm
+        title={`${entityType} を追加`}
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        fields={addFields}
+        onSubmit={handleAddSubmit}
+      />
+
+      {/* 削除確認ダイアログ */}
+      <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
+        <DialogTitle>削除の確認</DialogTitle>
+        <DialogContent>
+          <Typography>
+            {entityType} 「{deleteTarget ? entityLabel(deleteTarget) : ""}」を削除しますか？
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            この操作は Commit するまで元に戻せます（Undo 可能）。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)}>キャンセル</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">削除</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
