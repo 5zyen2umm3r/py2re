@@ -452,6 +452,7 @@ function filterEntities(entities: FlowEntity[], filter?: Record<string, unknown>
  * rowKey: 開閉状態管理用のユニークキー
  * rowDef: 対応するRowDef（セル定義・ContextMenu等を参照）
  * isSubRow: RowDefの直接行(false)かsub行(true)か
+ * kind: "label" = ラベル行, "dummy" = ダミー行, "data" = 通常データ行
  */
 interface RowNode {
   rowKey: string;
@@ -465,6 +466,10 @@ interface RowNode {
   /** この行に適用するガントバー定義（null の場合はバーを描画しない） */
   barDef: BarDef | null;
   buildChildren: () => RowNode[];
+  /** 行の種別: "data"=通常, "label"=ラベル行, "dummy"=ダミー行 */
+  kind: "data" | "label" | "dummy";
+  /** RowDef 境目の先頭行か（上部に太い区切り線を引く） */
+  isGroupStart: boolean;
 }
 
 function buildRowNodes(
@@ -477,12 +482,31 @@ function buildRowNodes(
     : [undefined];
 
   const nodes: RowNode[] = [];
+
+  // ラベル行（label が定義されている場合）
+  if (rowDef.label !== undefined) {
+    nodes.push({
+      rowKey: `${keyPrefix}:__label__`,
+      chain: [rowDef.label],
+      depth: 0,
+      hasChildren: false,
+      rowDef,
+      isSubRow: false,
+      cellDef: null,
+      barDef: null,
+      buildChildren: () => [],
+      kind: "label",
+      isGroupStart: true,
+    });
+  }
+
   baseEntities.forEach((entity, ei) => {
     const values = rowDef.value(entity as FlowEntity | undefined);
     values.forEach((val, vi) => {
       const rowKey = `${keyPrefix}:${ei}:${vi}`;
       const chain = [val];
       const hasChildren = !!rowDef.sub && rowDef.sub.value(entity as FlowEntity).length > 0;
+      const isFirst = ei === 0 && vi === 0;
 
       nodes.push({
         rowKey,
@@ -497,9 +521,28 @@ function buildRowNodes(
           rowDef.sub
             ? buildSubNodes(rowDef.sub, entity as FlowEntity, chain, 1, rowKey, rowDef)
             : [],
+        kind: "data",
+        // ラベル行がない場合は最初のデータ行がグループ先頭
+        isGroupStart: rowDef.label === undefined && isFirst,
       });
     });
   });
+
+  // ダミー行（末尾に常に追加）
+  nodes.push({
+    rowKey: `${keyPrefix}:__dummy__`,
+    chain: [null],
+    depth: 0,
+    hasChildren: false,
+    rowDef,
+    isSubRow: false,
+    cellDef: null,
+    barDef: rowDef.bar ?? null,
+    buildChildren: () => [],
+    kind: "dummy",
+    isGroupStart: false,
+  });
+
   return nodes;
 }
 
@@ -530,6 +573,8 @@ function buildSubNodes(
         sub.sub
           ? buildSubNodes(sub.sub, val as FlowEntity, chain, depth + 1, rowKey, rowDef)
           : [],
+      kind: "data" as const,
+      isGroupStart: false,
     };
   });
 }
@@ -648,6 +693,50 @@ function RowRenderer({
 
   const rowVal = chain[chain.length - 1];
 
+  // ---- ラベル行 ----
+  if (node.kind === "label") {
+    return (
+      <TableRow sx={{ borderTop: '2px solid', borderTopColor: 'divider' }}>
+        <TableCell
+          colSpan={colChains.length + 1}
+          sx={{
+            backgroundColor: 'action.hover',
+            fontWeight: 'bold',
+            fontSize: '0.8rem',
+            color: 'text.secondary',
+            py: 0.25,
+            px: 1,
+            letterSpacing: '0.05em',
+          }}
+        >
+          {String(rowVal ?? '')}
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  // ---- ダミー行 ----
+  if (node.kind === "dummy") {
+    const menuItems = collectContextMenuItems(rowDef, 0);
+    const hasMenu = menuItems.length > 0;
+    const cellEntities: FlowEntity[] = [];
+    return (
+      <TableRow
+        onContextMenu={
+          hasMenu
+            ? (e) => onContextMenu(e, menuItems, { rowChain: [null], colChain: [], entities: cellEntities })
+            : undefined
+        }
+        sx={{
+          height: 8,
+          '& > td': { py: 0, borderBottom: '2px solid', borderBottomColor: 'divider' },
+        }}
+      >
+        <TableCell colSpan={colChains.length + 1} sx={{ p: 0 }} />
+      </TableRow>
+    );
+  }
+
   const displayFn = isSubRow
     ? (rowDef.sub ? findSubDisplay(rowDef.sub, depth) : undefined)
     : rowDef.display;
@@ -665,6 +754,11 @@ function RowRenderer({
   // バーがある場合は laneCount に応じて行の高さを設定
   const rowHeight = node.barDef ? laneCount * BAR_LANE_HEIGHT : undefined;
 
+  // グループ先頭（ラベル行なし）の場合は上部に区切り線
+  const groupStartSx = node.isGroupStart
+    ? { borderTop: '2px solid', borderTopColor: 'divider' }
+    : {};
+
   return (
     <>
       <TableRow
@@ -677,6 +771,7 @@ function RowRenderer({
         sx={{
           position: 'relative',
           height: rowHeight,
+          ...groupStartSx,
           "& > td": { borderBottom: hasChildren && isOpen ? "none" : undefined },
         }}
       >

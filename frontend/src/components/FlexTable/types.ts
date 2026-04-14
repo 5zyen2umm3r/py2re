@@ -114,6 +114,8 @@ export interface RowDef<TValue = unknown> {
   contextMenu?: ContextMenuDef;
   /** RowDef（親行）レベルのガントバー定義 */
   bar?: BarDef;
+  /** RowDef 領域の先頭に表示するラベル行のテキスト（省略可） */
+  label?: string;
 }
 
 /** FlexTable全体のProps */
