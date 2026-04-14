@@ -8,7 +8,7 @@ import { useEntities } from '../context/EntityContext';
 import { useScheduleFilter } from '../context/ScheduleFilterContext';
 import { FlowEntity } from '../api/entities';
 import { FlexTable } from '../components/FlexTable/FlexTable';
-import { BarDef, ColumnDef, RowDef } from '../components/FlexTable/types';
+import { BarDef, BarContextMenuDef, ColumnDef, RowDef } from '../components/FlexTable/types';
 import { DynamicForm } from '../components/DynamicForm/DynamicForm';
 import {
   TimeGranularity,
@@ -57,7 +57,7 @@ function getTaskStyle(task: FlowEntity): CSSProperties {
 // ── メインコンポーネント ──────────────────────────────────────
 
 export function TaskSchedule() {
-  const { getList, patch, create } = useEntities();
+  const { getList, patch, create, remove } = useEntities();
   const {
     selectedProjectIds, rangeStart, rangeEnd,
     setSelectedProjects, setRangeStart, setRangeEnd,
@@ -157,7 +157,19 @@ export function TaskSchedule() {
       const due_date = formatDateToISO(dueDate);
       patch('Task', task.id, { start_date, due_date });
     },
-  }), [timeCols, granularity, patch]);
+    contextMenu: {
+      items: [
+        {
+          label: 'タスクを削除',
+          action: ({ entity }: { entity: FlowEntity; rowChain: unknown[] }) => {
+            if (entity?.id && window.confirm(`タスク「${String(entity['content'] ?? entity.id)}」を削除しますか？`)) {
+              remove('Task', entity.id);
+            }
+          },
+        },
+      ],
+    } satisfies BarContextMenuDef,
+  }), [timeCols, granularity, patch, remove]);
 
   // RowDef
   const assetRowDef: RowDef = useMemo(() => ({

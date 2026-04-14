@@ -52,6 +52,7 @@ type Action =
   | { kind: "REDO" }
   | { kind: "REDO_ALL" }
   | { kind: "CLEAR_PENDING" }
+  | { kind: "CLEAR_ALL_HISTORY" }
   | { kind: "RESTORE"; store: Pick<EntityStore, "state" | "past" | "future"> }
   /** LOAD 完了後に past の最新 after を state にマージして履歴を反映する */
   | { kind: "APPLY_PAST_TO_STATE" };
@@ -251,6 +252,8 @@ function reducer(store: EntityStore, action: Action): EntityStore {
     }
     case "CLEAR_PENDING":
       return { ...store, pendingDiffs: [] };
+    case "CLEAR_ALL_HISTORY":
+      return { ...store, past: [], future: [], pendingDiffs: [] };
     case "RESTORE":
       return { ...store, state: action.store.state, past: action.store.past, future: action.store.future };
     case "APPLY_PAST_TO_STATE": {
@@ -281,12 +284,21 @@ function reducer(store: EntityStore, action: Action): EntityStore {
 
 // ---- Context ----
 
+export interface PendingDiffSummary {
+  type: EntityType;
+  id: number | string | null;
+  action: string;
+  /** 変更フィールドのキー一覧（update の場合） */
+  fields: string[];
+}
+
 interface EntityContextValue {
   state: StoreState;
   canUndo: boolean;
   canRedo: boolean;
   pastCount: number;
   futureCount: number;
+  pendingCount: number;
   loadAll: () => Promise<void>;
   load: (type: EntityType) => Promise<void>;
   patch: (type: EntityType, id: number | string, data: Partial<FlowEntity>) => void;
@@ -298,6 +310,7 @@ interface EntityContextValue {
   redoAll: () => void;
   commit: (type: EntityType) => Promise<void>;
   commitAll: () => Promise<void>;
+  getPendingSummary: () => PendingDiffSummary[];
   resolve: (
     ref: { type: EntityType; id: number } | null | undefined,
   ) => FlowEntity | undefined;
@@ -434,7 +447,17 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         await entityApi.delete(d.type, d.id);
       }
     }
-    dispatch({ kind: "CLEAR_PENDING" });
+    // commit 後は履歴・pending をすべてクリアして状態を Fix する
+    dispatch({ kind: "CLEAR_ALL_HISTORY" });
+  }, [store.pendingDiffs]);
+
+  const getPendingSummary = useCallback((): PendingDiffSummary[] => {
+    return store.pendingDiffs.map((d) => ({
+      type: d.type,
+      id: d.id,
+      action: d.action,
+      fields: d.action === "update" ? Object.keys(d.patch) : [],
+    }));
   }, [store.pendingDiffs]);
 
   const resolve = useCallback(
@@ -457,6 +480,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       canRedo: store.future.length > 0,
       pastCount: store.past.length,
       futureCount: store.future.length,
+      pendingCount: store.pendingDiffs.length,
       loadAll,
       load,
       patch,
@@ -468,6 +492,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       redoAll,
       commit,
       commitAll,
+      getPendingSummary,
       resolve,
       getList,
     }),
@@ -484,6 +509,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       redoAll,
       commit,
       commitAll,
+      getPendingSummary,
       resolve,
       getList,
     ],

@@ -22,6 +22,8 @@ export interface BarDef {
   /** バー右端に右詰めで表示するラベル（省略可） */
   labelEnd?: (entity: FlowEntity) => ReactNode;
   style?: (entity: FlowEntity) => CSSProperties;
+  /** バー上で右クリックした際に表示するコンテキストメニュー（省略可） */
+  contextMenu?: BarContextMenuDef;
 }
 
 export interface ContextMenuDef {
@@ -31,6 +33,16 @@ export interface ContextMenuDef {
 export interface ContextMenuItem {
   label: string;
   action: (params: { rowChain: unknown[]; colChain: unknown[]; entities: FlowEntity[] }) => void;
+}
+
+/** バー専用コンテキストメニューアイテム（entity = バーに対応するエンティティ） */
+export interface BarContextMenuItem {
+  label: string;
+  action: (params: { entity: FlowEntity; rowChain: unknown[] }) => void;
+}
+
+export interface BarContextMenuDef {
+  items: BarContextMenuItem[];
 }
 
 /** 副列/副行の再帰定義 */

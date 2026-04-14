@@ -1,10 +1,11 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { HashRouter, Routes, Route, NavLink } from "react-router-dom";
 import {
   CssBaseline, AppBar, Toolbar, Typography, Button, Box, Tabs, Tab,
-  Tooltip, Chip,
+  Tooltip, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
+  List, ListItem, ListItemText,
 } from "@mui/material";
-import { EntityProvider, useEntities } from "./context/EntityContext";
+import { EntityProvider, useEntities, PendingDiffSummary } from "./context/EntityContext";
 import { ScheduleFilterProvider } from "./context/ScheduleFilterContext";
 import { SessionProvider, useSession } from "./context/SessionContext";
 import { EstimationTable } from "./components/EstimationTable";
@@ -20,8 +21,28 @@ const NAV_TABS = [
 ];
 
 function AppContent() {
-  const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, commitAll } = useEntities();
+  const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, pendingCount, commitAll, getPendingSummary } = useEntities();
   const { isAuthenticated, user, logout } = useSession();
+  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+  const [summary, setSummary] = useState<PendingDiffSummary[]>([]);
+
+  const handleCommitClick = () => {
+    const s = getPendingSummary();
+    setSummary(s);
+    setCommitDialogOpen(true);
+  };
+
+  const handleCommitConfirm = async () => {
+    setCommitDialogOpen(false);
+    await commitAll();
+  };
+
+  const actionLabel = (action: string) => {
+    if (action === "create") return "作成";
+    if (action === "update") return "更新";
+    if (action === "delete") return "削除";
+    return action;
+  };
 
   useEffect(() => {
     initQtChannel().then(() => loadAll());
@@ -79,7 +100,9 @@ function AppContent() {
               </Button>
             </span>
           </Tooltip>
-          <Button color="inherit" onClick={commitAll}>Commit</Button>
+          <Button color="inherit" onClick={handleCommitClick} disabled={pendingCount === 0}>
+            Commit {pendingCount > 0 ? `(${pendingCount})` : ""}
+          </Button>
 
           {/* ログインユーザー表示 */}
           {isAuthenticated && user && (
@@ -120,6 +143,33 @@ function AppContent() {
           />
         </Routes>
       </Box>
+
+      {/* Commit 確認ダイアログ */}
+      <Dialog open={commitDialogOpen} onClose={() => setCommitDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>変更をコミットしますか？</DialogTitle>
+        <DialogContent>
+          {summary.length === 0 ? (
+            <Typography variant="body2">変更はありません。</Typography>
+          ) : (
+            <List dense>
+              {summary.map((s, i) => (
+                <ListItem key={i} disableGutters>
+                  <ListItemText
+                    primary={`[${actionLabel(s.action)}] ${s.type} (ID: ${s.id ?? "新規"})`}
+                    secondary={s.fields.length > 0 ? `変更フィールド: ${s.fields.join(", ")}` : undefined}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCommitDialogOpen(false)}>キャンセル</Button>
+          <Button onClick={handleCommitConfirm} variant="contained" disabled={summary.length === 0}>
+            コミット
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

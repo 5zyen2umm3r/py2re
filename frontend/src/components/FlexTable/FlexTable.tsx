@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
-import { FlexTableProps, RowDef, ColumnDef, SubAxis, CellDef, ContextMenuDef, ContextMenuItem, BarDef, BarPosition } from "./types";
+import { FlexTableProps, RowDef, ColumnDef, SubAxis, CellDef, ContextMenuDef, ContextMenuItem, BarDef, BarPosition, BarContextMenuItem } from "./types";
 import { FlowEntity, EntityType } from "../../api/entities";
 import { CellEditor } from "./CellEditor";
 import { pointerToBarPosition, barToLeftPercent, barToRightPercent } from "./barUtils";
@@ -152,9 +152,10 @@ interface BarElementProps {
   laneHeight: number;
   /** BarOverlay の left オフセット（行ヘッダ幅）。ドラッグ位置計算に使用 */
   overlayLeft: number;
+  onContextMenu: (e: React.MouseEvent, items: BarContextMenuItem[], entity: FlowEntity, rowChain: unknown[]) => void;
 }
 
-function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef, laneTop, laneHeight, overlayLeft }: BarElementProps) {
+function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef, laneTop, laneHeight, overlayLeft, onContextMenu }: BarElementProps) {
   const [preview, setPreview] = useState<{ start: BarPosition; end: BarPosition } | null>(null);
 
   const { start: baseStart, end: baseEnd } = barDef.position(entity, colChains);
@@ -208,7 +209,14 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
   }, [barDef, entity, rowChain]);
 
   return (
-    <div style={barStyle}>
+    <div
+      style={barStyle}
+      onContextMenu={barDef.contextMenu ? (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu(e, barDef.contextMenu!.items, entity, rowChain);
+      } : undefined}
+    >
       {barDef.onDragStart && (
         <DragHandle
           type="start"
@@ -340,11 +348,12 @@ interface BarOverlayProps {
   containerRef: React.RefObject<HTMLTableRowElement>;
   /** レーン数が確定したときに親へ通知 */
   onLaneCount: (count: number) => void;
+  onContextMenu: (e: React.MouseEvent, items: BarContextMenuItem[], entity: FlowEntity, rowChain: unknown[]) => void;
 }
 
 function BarOverlay({
   barDef, rowChain, colChains, entities, totalColumns,
-  headerCellRef, containerRef, onLaneCount,
+  headerCellRef, containerRef, onLaneCount, onContextMenu,
 }: BarOverlayProps) {
   // ヘッダ幅・行幅を ResizeObserver で監視して正確に取得
   const [headerWidth, setHeaderWidth] = useState(0);
@@ -410,6 +419,7 @@ function BarOverlay({
             laneTop={top}
             laneHeight={BAR_LANE_HEIGHT}
             overlayLeft={headerWidth}
+            onContextMenu={onContextMenu}
           />
         );
       })}
@@ -612,6 +622,7 @@ interface RowRendererProps {
   openKeys: Set<string>;
   onToggle: (key: string) => void;
   onContextMenu: (e: React.MouseEvent, items: ContextMenuItem[], params: CtxState["params"]) => void;
+  onBarContextMenu: (e: React.MouseEvent, items: BarContextMenuItem[], entity: FlowEntity, rowChain: unknown[]) => void;
   totalDepth: number;
   editingCell: EditingCell | null;
   onStartEdit: (rowKey: string, colIndex: number, currentValue: unknown) => void;
@@ -620,7 +631,7 @@ interface RowRendererProps {
 }
 
 function RowRenderer({
-  node, colChains, columns, entities, openKeys, onToggle, onContextMenu, totalDepth,
+  node, colChains, columns, entities, openKeys, onToggle, onContextMenu, onBarContextMenu, totalDepth,
   editingCell, onStartEdit, onCommitEdit, onCancelEdit,
 }: RowRendererProps) {
   const { rowKey, chain, depth, hasChildren, rowDef, isSubRow, cellDef } = node;
@@ -750,6 +761,7 @@ function RowRenderer({
               headerCellRef={headerCellRef}
               containerRef={containerRef}
               onLaneCount={handleLaneCount}
+              onContextMenu={onBarContextMenu}
             />
           </TableCell>
         )}
@@ -765,6 +777,7 @@ function RowRenderer({
           openKeys={openKeys}
           onToggle={onToggle}
           onContextMenu={onContextMenu}
+          onBarContextMenu={onBarContextMenu}
           totalDepth={totalDepth}
           editingCell={editingCell}
           onStartEdit={onStartEdit}
@@ -806,6 +819,19 @@ export function FlexTable({ layout = "stacked", columns, rows, entities, stickyH
     (e: React.MouseEvent, items: ContextMenuItem[], params: CtxState["params"]) => {
       e.preventDefault();
       setCtx({ mouseX: e.clientX, mouseY: e.clientY, items, params });
+    },
+    []
+  );
+
+  const handleBarContextMenu = useCallback(
+    (e: React.MouseEvent, barItems: BarContextMenuItem[], entity: FlowEntity, rowChain: unknown[]) => {
+      e.preventDefault();
+      // BarContextMenuItem を ContextMenuItem に変換して既存の ctx メニューを再利用
+      const items: ContextMenuItem[] = barItems.map((bi) => ({
+        label: bi.label,
+        action: () => bi.action({ entity, rowChain }),
+      }));
+      setCtx({ mouseX: e.clientX, mouseY: e.clientY, items, params: { rowChain, colChain: [], entities: [] } });
     },
     []
   );
@@ -879,6 +905,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities, stickyH
                 openKeys={openKeys}
                 onToggle={handleToggle}
                 onContextMenu={handleContextMenu}
+                onBarContextMenu={handleBarContextMenu}
                 totalDepth={0}
                 editingCell={editingCell}
                 onStartEdit={handleStartEdit}
