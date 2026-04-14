@@ -728,11 +728,25 @@ function RowRenderer({
             : undefined
         }
         sx={{
-          height: 8,
-          '& > td': { py: 0, borderBottom: '2px solid', borderBottomColor: 'divider' },
+          '& > td': { borderBottom: '2px solid', borderBottomColor: 'divider' },
         }}
       >
-        <TableCell colSpan={colChains.length + 1} sx={{ p: 0 }} />
+        <TableCell
+          sx={{
+            color: 'text.disabled',
+            fontSize: '0.75rem',
+            fontStyle: 'italic',
+            whiteSpace: 'nowrap',
+            width: 1,
+            py: 0.25,
+            pl: 4,
+          }}
+        >
+          (EOF)
+        </TableCell>
+        {colChains.map((_, ci) => (
+          <TableCell key={ci} />
+        ))}
       </TableRow>
     );
   }
