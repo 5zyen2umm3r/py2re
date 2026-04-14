@@ -32,7 +32,8 @@ export interface ContextMenuDef {
 
 export interface ContextMenuItem {
   label: string;
-  action: (params: { rowChain: unknown[]; colChain: unknown[]; entities: FlowEntity[] }) => void;
+  action?: (params: { rowChain: unknown[]; colChain: unknown[]; entities: FlowEntity[] }) => void;
+  subItems?: ContextMenuItem[];
 }
 
 /** バー専用コンテキストメニューアイテム（entity = バーに対応するエンティティ） */

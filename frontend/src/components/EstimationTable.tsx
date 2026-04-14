@@ -73,6 +73,7 @@ export function EstimationTable() {
     Phase: getList("Phase"),
     Step: getList("Step"),
     Estimation: getList("Estimation"),
+    TimeLog: getList("TimeLog"),
   }), [state]);
 
   // ---- フォームフィールド定義 ----

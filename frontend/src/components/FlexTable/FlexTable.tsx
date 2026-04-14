@@ -800,6 +800,54 @@ function findSubHighlight(sub: SubAxis<unknown>, depth: number): ((v: unknown) =
   return sub.sub ? findSubHighlight(sub.sub, depth - 1) : undefined;
 }
 
+// ---- ContextMenuItemRenderer ----
+
+interface ContextMenuItemRendererProps {
+  item: ContextMenuItem;
+  params: CtxState["params"];
+  onClose: () => void;
+}
+
+function ContextMenuItemRenderer({ item, params, onClose }: ContextMenuItemRendererProps) {
+  const [subAnchor, setSubAnchor] = useState<HTMLElement | null>(null);
+
+  if (item.subItems && item.subItems.length > 0) {
+    return (
+      <>
+        <MenuItem
+          onMouseEnter={(e) => setSubAnchor(e.currentTarget)}
+          onMouseLeave={() => setSubAnchor(null)}
+        >
+          {item.label}
+          <span style={{ marginLeft: 'auto', paddingLeft: 8, fontSize: '0.75rem' }}>▶</span>
+          <Menu
+            open={Boolean(subAnchor)}
+            anchorEl={subAnchor}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            onClose={() => setSubAnchor(null)}
+            disableAutoFocus
+            disableEnforceFocus
+            style={{ pointerEvents: 'none' }}
+            PaperProps={{ style: { pointerEvents: 'auto' } }}
+            onMouseLeave={() => setSubAnchor(null)}
+          >
+            {item.subItems.map((sub, si) => (
+              <ContextMenuItemRenderer key={si} item={sub} params={params} onClose={onClose} />
+            ))}
+          </Menu>
+        </MenuItem>
+      </>
+    );
+  }
+
+  return (
+    <MenuItem onClick={() => { item.action?.(params); onClose(); }}>
+      {item.label}
+    </MenuItem>
+  );
+}
+
 // ---- メインコンポーネント ----
 
 export function FlexTable({ layout = "stacked", columns, rows, entities, stickyHeader = true }: FlexTableProps) {
@@ -924,9 +972,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities, stickyH
         anchorPosition={ctx ? { top: ctx.mouseY, left: ctx.mouseX } : undefined}
       >
         {ctx?.items.map((item, i) => (
-          <MenuItem key={i} onClick={() => { item.action(ctx.params); closeCtx(); }}>
-            {item.label}
-          </MenuItem>
+          <ContextMenuItemRenderer key={i} item={item} params={ctx.params} onClose={closeCtx} />
         ))}
       </Menu>
     </>

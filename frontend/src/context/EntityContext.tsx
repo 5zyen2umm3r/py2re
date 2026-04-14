@@ -65,6 +65,7 @@ const ENTITY_TYPES: EntityType[] = [
   "Phase",
   "Step",
   "Estimation",
+  "TimeLog",
 ];
 
 function emptyState(): StoreState {

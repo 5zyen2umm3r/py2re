@@ -11,6 +11,7 @@ import { SessionProvider, useSession } from "./context/SessionContext";
 import { EstimationTable } from "./components/EstimationTable";
 import { EntityBrowser } from "./pages/EntityBrowser";
 import { TaskSchedule } from "./pages/TaskSchedule";
+import { TimeLogPage } from "./pages/TimeLogPage";
 import { initQtChannel } from "./api/fetch";
 
 // ---- ナビゲーション用タブ（HashRouter のパスと対応） ----
@@ -18,6 +19,7 @@ const NAV_TABS = [
   { label: "工数表", path: "/" },
   { label: "エンティティ一覧", path: "/entities" },
   { label: "スケジュール", path: "/schedule" },
+  { label: "タイムログ", path: "/timelog" },
 ];
 
 function AppContent() {
@@ -138,6 +140,14 @@ function AppContent() {
             element={
               <Box sx={{ height: "100%", overflow: "hidden" }}>
                 <TaskSchedule />
+              </Box>
+            }
+          />
+          <Route
+            path="/timelog"
+            element={
+              <Box sx={{ height: "100%", overflow: "hidden" }}>
+                <TimeLogPage />
               </Box>
             }
           />

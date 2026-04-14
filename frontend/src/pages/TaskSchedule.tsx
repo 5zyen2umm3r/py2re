@@ -200,6 +200,7 @@ export function TaskSchedule() {
     Phase: [],
     Step: [],
     Estimation: [],
+    TimeLog: [],
   }), [tasks, filteredAssets, projects, users]);
 
   // タスク追加フォームのフィールド定義
