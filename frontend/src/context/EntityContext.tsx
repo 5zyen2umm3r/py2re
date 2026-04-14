@@ -308,27 +308,34 @@ const EntityContext = createContext<EntityContextValue | null>(null);
 
 const LS_HISTORY_KEY = "entityHistory";
 
-function saveHistoryToLS(past: HistoryEntry[][], future: HistoryEntry[][]) {
+interface PersistedStore {
+  past: HistoryEntry[][];
+  future: HistoryEntry[][];
+  pendingDiffs: EntityStore["pendingDiffs"];
+}
+
+function saveToLS(past: HistoryEntry[][], future: HistoryEntry[][], pendingDiffs: EntityStore["pendingDiffs"]) {
   try {
-    localStorage.setItem(LS_HISTORY_KEY, JSON.stringify({ past, future }));
+    const data: PersistedStore = { past, future, pendingDiffs };
+    localStorage.setItem(LS_HISTORY_KEY, JSON.stringify(data));
   } catch { /* ignore */ }
 }
 
-function loadHistoryFromLS(): { past: HistoryEntry[][]; future: HistoryEntry[][] } {
+function loadFromLS(): PersistedStore {
   try {
     const raw = localStorage.getItem(LS_HISTORY_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return JSON.parse(raw) as PersistedStore;
   } catch { /* ignore */ }
-  return { past: [], future: [] };
+  return { past: [], future: [], pendingDiffs: [] };
 }
 
 export function EntityProvider({ children }: { children: ReactNode }) {
-  const savedHistory = loadHistoryFromLS();
+  const saved = loadFromLS();
   const [store, dispatch] = useReducer(reducer, {
     state: emptyState(),
-    past: savedHistory.past,
-    future: savedHistory.future,
-    pendingDiffs: [],
+    past: saved.past,
+    future: saved.future,
+    pendingDiffs: saved.pendingDiffs,
   });
 
   const load = useCallback(async (type: EntityType) => {
@@ -369,10 +376,10 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   const redo = useCallback(() => dispatch({ kind: "REDO" }), []);
   const redoAll = useCallback(() => dispatch({ kind: "REDO_ALL" }), []);
 
-  // 履歴変化時に LocalStorage へ保存
+  // past / future / pendingDiffs 変化時に LocalStorage へ保存
   React.useEffect(() => {
-    saveHistoryToLS(store.past, store.future);
-  }, [store.past, store.future]);
+    saveToLS(store.past, store.future, store.pendingDiffs);
+  }, [store.past, store.future, store.pendingDiffs]);
 
   const commit = useCallback(
     async (type: EntityType) => {
