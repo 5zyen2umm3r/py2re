@@ -29,6 +29,11 @@
       "filters": [],
       "fields": ["id", "code", "entity_type", "color"]
     },
+    "TimeLog": {
+      "filters": [],
+      "fields": ["id", "code", "project", "entity", "sg_start_time", "duration"],
+      "project_filter_field": "project"
+    },
     "Estimation": {
       "type": "CustomEntity",
       "sync": false,

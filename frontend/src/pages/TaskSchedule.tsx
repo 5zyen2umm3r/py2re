@@ -65,6 +65,7 @@ export function TaskSchedule() {
 
   const [granularity, setGranularity] = useState<TimeGranularity>('week');
   const [formAsset, setFormAsset] = useState<FlowEntity | null>(null);
+  const [editTask, setEditTask] = useState<FlowEntity | null>(null);
 
   const tasks = getList('Task');
   const assets = getList('Asset');
@@ -160,6 +161,12 @@ export function TaskSchedule() {
     contextMenu: {
       items: [
         {
+          label: 'タスクを編集',
+          action: ({ entity }: { entity: FlowEntity; rowChain: unknown[] }) => {
+            setEditTask(entity);
+          },
+        },
+        {
           label: 'タスクを削除',
           action: ({ entity }: { entity: FlowEntity; rowChain: unknown[] }) => {
             if (entity?.id && window.confirm(`タスク「${String(entity['content'] ?? entity.id)}」を削除しますか？`)) {
@@ -169,7 +176,7 @@ export function TaskSchedule() {
         },
       ],
     } satisfies BarContextMenuDef,
-  }), [timeCols, granularity, patch, remove]);
+  }), [timeCols, granularity, patch, remove, setEditTask]);
 
   // RowDef
   const assetRowDef: RowDef = useMemo(() => ({
@@ -204,8 +211,7 @@ export function TaskSchedule() {
   }), [tasks, filteredAssets, projects, users]);
 
   // タスク追加フォームのフィールド定義
-  const taskFormFields = useMemo(() => [
-    {
+  const taskFormFields = useMemo(() => [    {
       name: 'entity',
       label: 'アセット',
       type: 'readonly' as const,
@@ -238,6 +244,36 @@ export function TaskSchedule() {
       required: false,
     },
   ], [formAsset]);
+
+  // タスク編集フォームのフィールド定義
+  const editTaskFormFields = useMemo(() => [
+    {
+      name: 'content',
+      label: 'タスク名',
+      type: 'text' as const,
+      required: true,
+    },
+    {
+      name: 'start_date',
+      label: '開始日',
+      type: 'date' as const,
+      required: true,
+    },
+    {
+      name: 'due_date',
+      label: '期限日',
+      type: 'date' as const,
+      required: true,
+    },
+    {
+      name: 'sg_user',
+      label: '担当ユーザ',
+      type: 'entity' as const,
+      entityType: 'HumanUser' as const,
+      labelField: 'name',
+      required: false,
+    },
+  ], []);
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -297,6 +333,32 @@ export function TaskSchedule() {
                 : undefined,
             });
             setFormAsset(null);
+          }}
+        />
+
+        {/* タスク編集フォーム */}
+        <DynamicForm
+          title="タスクを編集"
+          open={editTask !== null}
+          onClose={() => setEditTask(null)}
+          fields={editTaskFormFields}
+          defaultValues={{
+            content: editTask?.['content'],
+            start_date: editTask?.['start_date'],
+            due_date: editTask?.['due_date'],
+            sg_user: (editTask?.['sg_user'] as any)?.id ?? null,
+          }}
+          onSubmit={(values) => {
+            if (!editTask) return;
+            patch('Task', editTask.id, {
+              content: values['content'],
+              start_date: values['start_date'],
+              due_date: values['due_date'],
+              sg_user: values['sg_user']
+                ? { type: 'HumanUser', id: values['sg_user'] }
+                : null,
+            });
+            setEditTask(null);
           }}
         />
       </Box>
