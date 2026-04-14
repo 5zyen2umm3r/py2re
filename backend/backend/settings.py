@@ -131,5 +131,11 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',  # Vite dev server
     'http://127.0.0.1:5173',
 ]
+# セッションクッキーをクロスオリジンで送受信するために必要
+CORS_ALLOW_CREDENTIALS = True
 # Qt経由（file://）でのアクセスを許可する場合は以下を有効化
 # CORS_ALLOW_ALL_ORIGINS = True
+
+# セッション設定
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True

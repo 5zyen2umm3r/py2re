@@ -2,10 +2,11 @@ import React, { useEffect } from "react";
 import { HashRouter, Routes, Route, NavLink } from "react-router-dom";
 import {
   CssBaseline, AppBar, Toolbar, Typography, Button, Box, Tabs, Tab,
-  Tooltip,
+  Tooltip, Chip,
 } from "@mui/material";
 import { EntityProvider, useEntities } from "./context/EntityContext";
 import { ScheduleFilterProvider } from "./context/ScheduleFilterContext";
+import { SessionProvider, useSession } from "./context/SessionContext";
 import { EstimationTable } from "./components/EstimationTable";
 import { EntityBrowser } from "./pages/EntityBrowser";
 import { TaskSchedule } from "./pages/TaskSchedule";
@@ -20,6 +21,7 @@ const NAV_TABS = [
 
 function AppContent() {
   const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, commitAll } = useEntities();
+  const { isAuthenticated, user, logout } = useSession();
 
   useEffect(() => {
     initQtChannel().then(() => loadAll());
@@ -78,6 +80,19 @@ function AppContent() {
             </span>
           </Tooltip>
           <Button color="inherit" onClick={commitAll}>Commit</Button>
+
+          {/* ログインユーザー表示 */}
+          {isAuthenticated && user && (
+            <Tooltip title="ログアウト">
+              <Chip
+                label={user.firstName ? `${user.firstName} ${user.lastName}`.trim() : user.username}
+                onClick={logout}
+                size="small"
+                sx={{ color: "inherit", borderColor: "rgba(255,255,255,0.5)", cursor: "pointer" }}
+                variant="outlined"
+              />
+            </Tooltip>
+          )}
         </Toolbar>
       </AppBar>
 
@@ -112,12 +127,14 @@ function AppContent() {
 export default function App() {
   return (
     <HashRouter>
-      <EntityProvider>
-        <ScheduleFilterProvider>
-          <CssBaseline />
-          <AppContent />
-        </ScheduleFilterProvider>
-      </EntityProvider>
+      <SessionProvider>
+        <EntityProvider>
+          <ScheduleFilterProvider>
+            <CssBaseline />
+            <AppContent />
+          </ScheduleFilterProvider>
+        </EntityProvider>
+      </SessionProvider>
     </HashRouter>
   );
 }

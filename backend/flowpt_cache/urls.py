@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import EntityViewSet, EntityHistoryViewSet, SnapshotViewSet, SyncStateViewSet
+from .auth_views import session_view, login_view, logout_view
 
 router = DefaultRouter()
 router.register(r"history", EntityHistoryViewSet, basename="history")
@@ -15,6 +16,11 @@ entity_commit = EntityViewSet.as_view({"post": "commit"})
 
 urlpatterns = [
     path("", include(router.urls)),
+    # 認証・セッション
+    path("auth/session/", session_view, name="auth-session"),
+    path("auth/login/", login_view, name="auth-login"),
+    path("auth/logout/", logout_view, name="auth-logout"),
+    # エンティティ
     path("entities/<str:entity_type>/", entity_list, name="entity-list"),
     path("entities/<str:entity_type>/<int:pk>/", entity_detail, name="entity-detail"),
     path("entities/<str:entity_type>/sync/", entity_sync, name="entity-sync"),
