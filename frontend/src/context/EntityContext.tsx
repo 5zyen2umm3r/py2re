@@ -324,7 +324,14 @@ function saveToLS(past: HistoryEntry[][], future: HistoryEntry[][], pendingDiffs
 function loadFromLS(): PersistedStore {
   try {
     const raw = localStorage.getItem(LS_HISTORY_KEY);
-    if (raw) return JSON.parse(raw) as PersistedStore;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PersistedStore>;
+      return {
+        past: Array.isArray(parsed.past) ? parsed.past : [],
+        future: Array.isArray(parsed.future) ? parsed.future : [],
+        pendingDiffs: Array.isArray(parsed.pendingDiffs) ? parsed.pendingDiffs : [],
+      };
+    }
   } catch { /* ignore */ }
   return { past: [], future: [], pendingDiffs: [] };
 }
