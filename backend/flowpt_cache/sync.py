@@ -317,8 +317,129 @@ def sync_all(
 
 # ---- FlowPTへのコミット ----
 
+def _has_unresolved_temp_refs(patch: dict, temp_id_map: dict[str, int]) -> bool:
+    """patch 内に未解決の仮ID参照が残っているか確認する"""
+    for val in patch.values():
+        if isinstance(val, dict) and "id" in val:
+            ref_id = val["id"]
+            if isinstance(ref_id, str) and ref_id.startswith("_new_") and ref_id not in temp_id_map:
+                return True
+        elif isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict) and "id" in item:
+                    ref_id = item["id"]
+                    if isinstance(ref_id, str) and ref_id.startswith("_new_") and ref_id not in temp_id_map:
+                        return True
+    return False
+
+
+def _process_create_diffs_with_deps(
+    create_diffs: list,
+    temp_id_map: dict[str, int],
+    sg,
+    config: dict,
+) -> None:
+    """
+    create diff を依存関係を考慮して処理する。
+    未解決の仮ID参照を持つ diff は保留し、解決可能になったものから順に処理する。
+    保留リストが減らなくなった場合は循環依存として例外を発生させる。
+    """
+    pending = list(create_diffs)
+
+    while pending:
+        prev_count = len(pending)
+        next_pending = []
+
+        for diff in pending:
+            if _has_unresolved_temp_refs(diff.patch, temp_id_map):
+                # まだ未解決の仮ID参照がある → 保留
+                next_pending.append(diff)
+                continue
+
+            # 解決可能 → 処理する
+            entity_cfg = config["entities"].get(diff.entity_type, {})
+            sg_type = entity_cfg.get("type", diff.entity_type)
+
+            clean_patch = _resolve_temp_refs(diff.patch, temp_id_map)
+            clean_patch = {
+                k: v for k, v in clean_patch.items()
+                if k not in ("id", "_diff_id", "type")
+            }
+
+            result = sg.create(sg_type, clean_patch)
+            actual_id = result.get("id")
+
+            if actual_id is not None:
+                temp_key = f"_new_{diff.id}"
+                temp_id_map[temp_key] = actual_id
+
+                # ローカルキャッシュにも登録
+                from .models import CachedEntity, CachedProject
+                result_data = {**clean_patch, "id": actual_id, "type": diff.entity_type}
+                if diff.entity_type == "Project":
+                    CachedProject.objects.get_or_create(
+                        flowpt_id=actual_id,
+                        defaults={"data": result_data},
+                    )
+                else:
+                    project_obj = _resolve_project(
+                        config["entities"].get(diff.entity_type, {}), result_data
+                    )
+                    CachedEntity.objects.get_or_create(
+                        entity_type=diff.entity_type,
+                        flowpt_id=actual_id,
+                        defaults={"data": result_data, "project": project_obj},
+                    )
+
+            diff.delete()
+
+        if len(next_pending) == prev_count:
+            # 1件も減らなかった → 循環依存または解決不能な仮ID参照
+            unresolved_ids = [
+                f"_new_{d.id} ({d.entity_type})" for d in next_pending
+            ]
+            raise ValueError(
+                f"循環依存または解決不能な仮ID参照が検出されました: {', '.join(unresolved_ids)}"
+            )
+
+        pending = next_pending
+
+
+def _resolve_temp_refs(patch: dict, temp_id_map: dict[str, int]) -> dict:
+    """patch 内の仮ID参照（"_new_xxx" 形式）を実際の FlowPT ID に置き換える。"""
+    resolved = {}
+    for key, val in patch.items():
+        if isinstance(val, dict) and "id" in val:
+            ref_id = val["id"]
+            if isinstance(ref_id, str) and ref_id in temp_id_map:
+                resolved[key] = {**val, "id": temp_id_map[ref_id]}
+            else:
+                resolved[key] = val
+        elif isinstance(val, list):
+            new_list = []
+            for item in val:
+                if isinstance(item, dict) and "id" in item:
+                    ref_id = item["id"]
+                    if isinstance(ref_id, str) and ref_id in temp_id_map:
+                        new_list.append({**item, "id": temp_id_map[ref_id]})
+                    else:
+                        new_list.append(item)
+                else:
+                    new_list.append(item)
+            resolved[key] = new_list
+        else:
+            resolved[key] = val
+    return resolved
+
+
 def commit_diffs_to_flowpt(diff_ids: list[int] | None = None):
-    """蓄積した差分をFlowPT本体に反映する"""
+    """
+    蓄積した差分をFlowPT本体に反映する。
+
+    create diff は依存関係を考慮して処理し（_process_create_diffs_with_deps）、
+    update/delete diff は create 完了後に処理する。
+    patch 内の仮ID参照は実際の FlowPT ID に置き換えてから送信する。
+    """
     from .models import EntityDiff
     sg = get_sg_client()
     config = _load_config()
@@ -327,14 +448,29 @@ def commit_diffs_to_flowpt(diff_ids: list[int] | None = None):
     if diff_ids:
         qs = qs.filter(id__in=diff_ids)
 
-    for diff in qs.order_by("created_at"):
+    # 仮ID → 実際の FlowPT ID のマッピング
+    temp_id_map: dict[str, int] = {}
+
+    all_diffs = list(qs.order_by("created_at"))
+    create_diffs = [d for d in all_diffs if d.action == "create"]
+    other_diffs  = [d for d in all_diffs if d.action != "create"]
+
+    # --- Step 1: create diff を依存関係を考慮して処理 ---
+    _process_create_diffs_with_deps(create_diffs, temp_id_map, sg, config)
+
+    # --- Step 2: update / delete diff を処理 ---
+    for diff in other_diffs:
         entity_cfg = config["entities"].get(diff.entity_type, {})
         sg_type = entity_cfg.get("type", diff.entity_type)
 
-        if diff.action == "create":
-            sg.create(sg_type, diff.patch)
-        elif diff.action == "update" and diff.flowpt_id:
-            sg.update(sg_type, diff.flowpt_id, diff.patch)
+        if diff.action == "update" and diff.flowpt_id:
+            clean_patch = _resolve_temp_refs(diff.patch, temp_id_map)
+            clean_patch = {
+                k: v for k, v in clean_patch.items()
+                if k not in ("id", "_diff_id", "type")
+            }
+            sg.update(sg_type, diff.flowpt_id, clean_patch)
+
         elif diff.action == "delete" and diff.flowpt_id:
             sg.delete(sg_type, diff.flowpt_id)
 
