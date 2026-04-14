@@ -737,7 +737,7 @@ function RowRenderer({
             fontSize: '0.75rem',
             fontStyle: 'italic',
             whiteSpace: 'nowrap',
-            width: 1,
+            width: '1%',
             py: 0.25,
             pl: 4,
           }}
@@ -791,7 +791,7 @@ function RowRenderer({
       >
         <TableCell
           ref={headerCellRef}
-          style={{ ...rowStyle, paddingLeft: 8 + depth * 20, whiteSpace: "nowrap", width: 1, verticalAlign: 'middle' }}
+          style={{ ...rowStyle, paddingLeft: 8 + depth * 20, whiteSpace: "nowrap", width: "1%", verticalAlign: 'middle' }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             {hasChildren ? (
@@ -1030,7 +1030,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities, stickyH
         <Table size="small" stickyHeader={stickyHeader}>
           <TableHead>
             <TableRow>
-              <TableCell />
+              <TableCell sx={{ width: '1%', whiteSpace: 'nowrap' }} />
               {colChains.map((chain, ci) => {
                 const colDef = columns[0];
                 const display = colDef.display ?? ((v) => String(v ?? ""));
