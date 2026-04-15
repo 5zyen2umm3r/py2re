@@ -58,8 +58,14 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Sync complete."))
 
     def _print_result(self, entity_type: str, result: dict):
-        self.stdout.write(
-            f"  {entity_type}: created={result['created']}, "
-            f"updated={result['updated']}, deleted={result['deleted']} "
-            f"({result.get('mode', '-')})"
-        )
+        if result.get("skipped", False):
+            self.stdout.write(
+                f"  {entity_type}: created={result['created']}, "
+                f"updated={result['updated']}, deleted={result['deleted']} "
+                f"({result.get('mode', '-')})"
+            )
+        else:
+            self.stdout.write(
+                f"  {entity_type}: reason={result['reason']}, "
+            )
+
