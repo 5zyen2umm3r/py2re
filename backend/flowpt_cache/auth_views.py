@@ -105,9 +105,12 @@ def sg_login_view(request):
         # 現在の認証ユーザ情報を取得
         sg_user = sg.find_one(
             "HumanUser",
-            [["sg_status_list", "is", "act"]],
+            [
+                ["sg_status_list", "is", "act"],
+                ["login", "is", sg._user._login]
+            ],
             ["login", "name", "email", "firstname", "lastname"],
-            additional_filter_presets=[{"preset_name": "current_user"}],
+            #additional_filter_presets=[{"preset_name": "current_user"}],
         )
 
         if sg_user is None:

@@ -31,8 +31,9 @@
     },
     "TimeLog": {
       "filters": [],
-      "fields": ["id", "code", "project", "entity", "sg_start_time", "duration"],
-      "project_filter_field": "project"
+      "fields": ["id", "code", "project", "entity", "user", "date", "sg_start_time", "duration"],
+      "project_filter_field": "project",
+      "datetime_fields": ["sg_start_time"]
     },
     "Estimation": {
       "type": "CustomEntity",

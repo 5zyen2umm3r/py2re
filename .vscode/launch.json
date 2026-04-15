@@ -29,6 +29,19 @@
             "cwd": "${workspaceFolder}\\backend"
         },
         {
+            "name": "Sync Projects",
+            "type": "debugpy",
+            "request": "launch",
+            "args": [
+                "sync_sg",
+                "--project-ids", "${input:projects}"
+            ],
+            "django": true,
+            "autoStartBrowser": false,
+            "program": "manage.py",
+            "cwd": "${workspaceFolder}\\backend"
+        },
+        {
             "name": "UI",
             "type": "debugpy",
             "request": "launch",
@@ -48,6 +61,13 @@
             "webRoot": "${workspaceFolder}/frontend",
             "preLaunchTask": "npm-run-dev",
             "postDebugTask": "npm-kill-frontend"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "projects",
+            "type":"promptString",
+            "description": "Project IDsを入力"
         }
     ]
 }

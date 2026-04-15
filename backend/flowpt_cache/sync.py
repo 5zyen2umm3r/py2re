@@ -16,6 +16,46 @@ def _load_config() -> dict:
         return json.load(f)
 
 
+# ---- datetime 変換ヘルパー ----
+
+def _serialize_datetime_fields(data: dict, datetime_fields: list[str]) -> dict:
+    """
+    SG から取得したデータ内の datetime オブジェクトを ISO 8601 文字列に変換する。
+    JSON（Django の JSONField）に格納できるようにするために使用する。
+    """
+    if not datetime_fields:
+        return data
+    result = dict(data)
+    for field in datetime_fields:
+        val = result.get(field)
+        if isinstance(val, datetime):
+            result[field] = val.isoformat()
+    return result
+
+
+def _deserialize_datetime_fields(data: dict, datetime_fields: list[str]) -> dict:
+    """
+    DB から取得したデータ内の ISO 8601 文字列を datetime オブジェクトに変換する。
+    SG へのコミット（update/create）時に使用する。
+    """
+    if not datetime_fields:
+        return data
+    result = dict(data)
+    for field in datetime_fields:
+        val = result.get(field)
+        if isinstance(val, str):
+            try:
+                result[field] = datetime.fromisoformat(val)
+            except ValueError:
+                pass  # 変換できない場合はそのまま
+    return result
+
+
+def _get_datetime_fields(entity_type: str, config: dict) -> list[str]:
+    """config から指定エンティティの datetime_fields を取得する。"""
+    return config.get("entities", {}).get(entity_type, {}).get("datetime_fields", [])
+
+
 def get_sg_client() -> shotgun_api3.Shotgun:
     try:
         script_name=os.environ.get("FLOWPT_SCRIPT")
@@ -149,6 +189,7 @@ def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False, project_ids: lis
     max_gen: int = config.get("generations", 10)
     entity_cfg = config["entities"]["Project"]
     entity_type = "Project"
+    datetime_fields = _get_datetime_fields(entity_type, config)
 
     last_synced = _get_last_synced(entity_type)
     sync_start = datetime.now(timezone.utc)
@@ -162,7 +203,10 @@ def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False, project_ids: lis
     remote_entities: list[dict] = sg.find(
         "Project", filters, entity_cfg.get("fields", ["id"])
     )
-    remote_map: dict[int, dict] = {e["id"]: e for e in remote_entities}
+    remote_map: dict[int, dict] = {
+        e["id"]: _serialize_datetime_fields(e, datetime_fields)
+        for e in remote_entities
+    }
     stats = {"created": 0, "updated": 0, "deleted": 0, "mode": "full" if full else "incremental"}
 
     if full:
@@ -228,6 +272,7 @@ def sync_entity_type(
 
     last_synced = _get_last_synced(entity_type)
     sync_start = datetime.now(timezone.utc)
+    datetime_fields = _get_datetime_fields(entity_type, config)
 
     sg_type = entity_cfg.get("type", entity_type)
     filters = _build_filters(entity_cfg, last_synced, full, project_ids)
@@ -235,7 +280,10 @@ def sync_entity_type(
     remote_entities: list[dict] = sg.find(
         sg_type, filters, entity_cfg.get("fields", ["id"])
     )
-    remote_map: dict[int, dict] = {e["id"]: e for e in remote_entities}
+    remote_map: dict[int, dict] = {
+        e["id"]: _serialize_datetime_fields(e, datetime_fields)
+        for e in remote_entities
+    }
 
     # 削除検出のローカルスコープ: project_ids 指定時はそのProject配下のみ対象
     project_field = entity_cfg.get("project_filter_field")
@@ -368,12 +416,14 @@ def _process_create_diffs_with_deps(
             # 解決可能 → 処理する
             entity_cfg = config["entities"].get(diff.entity_type, {})
             sg_type = entity_cfg.get("type", diff.entity_type)
+            datetime_fields = _get_datetime_fields(diff.entity_type, config)
 
             clean_patch = _resolve_temp_refs(diff.patch, temp_id_map)
             clean_patch = {
                 k: v for k, v in clean_patch.items()
                 if k not in ("id", "_diff_id", "type")
             }
+            clean_patch = _deserialize_datetime_fields(clean_patch, datetime_fields)
 
             result = sg.create(sg_type, clean_patch)
             actual_id = result.get("id")
@@ -480,6 +530,7 @@ def commit_diffs_to_flowpt(diff_ids: list[int] | None = None):
     for diff in other_diffs:
         entity_cfg = config["entities"].get(diff.entity_type, {})
         sg_type = entity_cfg.get("type", diff.entity_type)
+        datetime_fields = _get_datetime_fields(diff.entity_type, config)
 
         if diff.action == "update" and diff.flowpt_id:
             clean_patch = _resolve_temp_refs(diff.patch, temp_id_map)
@@ -487,6 +538,7 @@ def commit_diffs_to_flowpt(diff_ids: list[int] | None = None):
                 k: v for k, v in clean_patch.items()
                 if k not in ("id", "_diff_id", "type")
             }
+            clean_patch = _deserialize_datetime_fields(clean_patch, datetime_fields)
             sg.update(sg_type, diff.flowpt_id, clean_patch)
 
         elif diff.action == "delete" and diff.flowpt_id:
