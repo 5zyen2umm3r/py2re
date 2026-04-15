@@ -24,7 +24,7 @@ const NAV_TABS = [
 
 function AppContent() {
   const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, pendingCount, commitAll, getPendingSummary } = useEntities();
-  const { isAuthenticated, user, logout } = useSession();
+  const { isAuthenticated, user, logout, sgLogin, loading: sessionLoading } = useSession();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [summary, setSummary] = useState<PendingDiffSummary[]>([]);
 
@@ -106,8 +106,8 @@ function AppContent() {
             Commit {pendingCount > 0 ? `(${pendingCount})` : ""}
           </Button>
 
-          {/* ログインユーザー表示 */}
-          {isAuthenticated && user && (
+          {/* ログインユーザー表示 / ShotGrid ログインボタン */}
+          {isAuthenticated && user ? (
             <Tooltip title="ログアウト">
               <Chip
                 label={user.firstName ? `${user.firstName} ${user.lastName}`.trim() : user.username}
@@ -116,6 +116,21 @@ function AppContent() {
                 sx={{ color: "inherit", borderColor: "rgba(255,255,255,0.5)", cursor: "pointer" }}
                 variant="outlined"
               />
+            </Tooltip>
+          ) : (
+            <Tooltip title="ShotGrid の認証情報でログインします">
+              <span>
+                <Button
+                  color="inherit"
+                  variant="outlined"
+                  size="small"
+                  disabled={sessionLoading}
+                  onClick={() => sgLogin().catch(() => {})}
+                  sx={{ borderColor: "rgba(255,255,255,0.5)", whiteSpace: "nowrap" }}
+                >
+                  SG ログイン
+                </Button>
+              </span>
             </Tooltip>
           )}
         </Toolbar>

@@ -1,5 +1,6 @@
 """認証・セッション関連ビュー"""
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
 from django.middleware.csrf import get_token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -76,3 +77,87 @@ def logout_view(request):
     """ログアウトエンドポイント"""
     logout(request)
     return Response({"isAuthenticated": False})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def sg_login_view(request):
+    """
+    ShotGrid 認証によるログインエンドポイント。
+    Body: {} （認証情報は get_sg_client() が環境変数 or tank から取得）
+
+    処理フロー:
+    1. get_sg_client() で SG 接続を確立
+    2. sg.find_one("HumanUser") で現在の認証ユーザ情報を取得
+    3. Django User を login フィールドで同定（存在しなければ生成）
+    4. そのユーザでセッションを確立して返す
+    """
+    from .sync import get_sg_client
+
+    try:
+        sg = get_sg_client()
+        if sg is None:
+            return Response(
+                {"error": "ShotGrid クライアントの取得に失敗しました"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # 現在の認証ユーザ情報を取得
+        sg_user = sg.find_one(
+            "HumanUser",
+            [["sg_status_list", "is", "act"]],
+            ["login", "name", "email", "firstname", "lastname"],
+            additional_filter_presets=[{"preset_name": "current_user"}],
+        )
+
+        if sg_user is None:
+            return Response(
+                {"error": "ShotGrid からユーザ情報を取得できませんでした"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        sg_login = sg_user.get("login") or ""
+        if not sg_login:
+            return Response(
+                {"error": "ShotGrid ユーザの login フィールドが空です"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Django ユーザを同定または生成
+        user, created = User.objects.get_or_create(
+            username=sg_login,
+            defaults={
+                "email":      sg_user.get("email") or "",
+                "first_name": sg_user.get("firstname") or "",
+                "last_name":  sg_user.get("lastname") or "",
+            },
+        )
+
+        if not created:
+            # 既存ユーザの情報を最新の SG 情報で更新
+            updated = False
+            for attr, val in [
+                ("email",      sg_user.get("email") or ""),
+                ("first_name", sg_user.get("firstname") or ""),
+                ("last_name",  sg_user.get("lastname") or ""),
+            ]:
+                if getattr(user, attr) != val:
+                    setattr(user, attr, val)
+                    updated = True
+            if updated:
+                user.save(update_fields=["email", "first_name", "last_name"])
+
+        # パスワード認証を使わないためログイン時にバックエンドを明示
+        user.backend = "django.contrib.auth.backends.ModelBackend"
+        login(request, user)
+
+        return Response({
+            "isAuthenticated": True,
+            "user": _user_data(user),
+        })
+
+    except Exception as exc:
+        return Response(
+            {"error": f"ShotGrid 認証エラー: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

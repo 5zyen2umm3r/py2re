@@ -37,6 +37,7 @@ interface SessionState {
 
 interface SessionContextValue extends SessionState {
   login: (username: string, password: string) => Promise<void>;
+  sgLogin: () => Promise<void>;
   logout: () => Promise<void>;
   /** セッション状態を再取得する */
   refresh: () => Promise<void>;
@@ -98,8 +99,35 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const logout = useCallback(async () => {
-    await apiFetch(`${AUTH_BASE}/auth/logout/`, {
+  const sgLogin = useCallback(async () => {
+    setState((prev) => ({ ...prev, error: null, loading: true }));
+    try {
+      const data = await apiFetch<{ isAuthenticated: boolean; user?: SessionUser; error?: string }>(
+        `${AUTH_BASE}/auth/sg-login/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+      if (!data.isAuthenticated) {
+        const msg = data.error ?? "ShotGrid ログインに失敗しました";
+        setState((prev) => ({ ...prev, loading: false, error: msg }));
+        throw new Error(msg);
+      }
+      setState({
+        isAuthenticated: true,
+        user: data.user ?? null,
+        loading: false,
+        error: null,
+      });
+    } catch (e) {
+      setState((prev) => ({ ...prev, loading: false, error: String(e) }));
+      throw e;
+    }
+  }, []);
+
+  const logout = useCallback(async () => {    await apiFetch(`${AUTH_BASE}/auth/logout/`, {
       method: "POST",
       credentials: "include",
     });
@@ -107,7 +135,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <SessionContext.Provider value={{ ...state, login, logout, refresh }}>
+    <SessionContext.Provider value={{ ...state, login, sgLogin, logout, refresh }}>
       {children}
     </SessionContext.Provider>
   );
