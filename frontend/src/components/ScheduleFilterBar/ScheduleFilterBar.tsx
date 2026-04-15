@@ -24,7 +24,7 @@ export function ScheduleFilterBar(): JSX.Element {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box sx={{ mb: 2, display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
+      <Box sx={{ pt: 1, pb: 1, px: 1, display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
         <Autocomplete
           multiple
           size="small"
