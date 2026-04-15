@@ -1,25 +1,31 @@
 import React, { useEffect, useState } from "react";
 import { HashRouter, Routes, Route, NavLink } from "react-router-dom";
 import {
-  CssBaseline, AppBar, Toolbar, Typography, Button, Box, Tabs, Tab,
+  CssBaseline, AppBar, Toolbar, Typography, Button, Box,
   Tooltip, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  List, ListItem, ListItemText,
+  List, ListItem, ListItemText, IconButton, Drawer, ListItemButton,
 } from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
 import { EntityProvider, useEntities, PendingDiffSummary } from "./context/EntityContext";
 import { ScheduleFilterProvider } from "./context/ScheduleFilterContext";
+import { TimeLogFilterProvider } from "./context/TimeLogFilterContext";
+import { SettingsProvider } from "./context/SettingsContext";
 import { SessionProvider, useSession } from "./context/SessionContext";
-import { EstimationTable } from "./components/EstimationTable";
+import { EstimationTable } from "./pages/EstimationTable";
 import { EntityBrowser } from "./pages/EntityBrowser";
 import { TaskSchedule } from "./pages/TaskSchedule";
 import { TimeLogPage } from "./pages/TimeLogPage";
+import { HistoryPage } from "./pages/HistoryPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { initQtChannel } from "./api/fetch";
 
-// ---- ナビゲーション用タブ（HashRouter のパスと対応） ----
-const NAV_TABS = [
+const NAV_ITEMS = [
   { label: "工数表", path: "/" },
-  { label: "エンティティ一覧", path: "/entities" },
   { label: "スケジュール", path: "/schedule" },
   { label: "タイムログ", path: "/timelog" },
+  { label: "エンティティ一覧", path: "/entities" },
+  { label: "履歴", path: "/history" },
+  { label: "設定", path: "/settings" },
 ];
 
 function AppContent() {
@@ -27,6 +33,7 @@ function AppContent() {
   const { isAuthenticated, user, logout, sgLogin, loading: sessionLoading } = useSession();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [summary, setSummary] = useState<PendingDiffSummary[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const handleCommitClick = () => {
     const s = getPendingSummary();
@@ -50,33 +57,23 @@ function AppContent() {
     initQtChannel().then(() => loadAll());
   }, [loadAll]);
 
-  // 現在のハッシュパスからアクティブタブを判定
-  const currentPath = window.location.hash.replace("#", "") || "/";
-  const activeTab = NAV_TABS.findIndex((t) => t.path === currentPath);
-
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <AppBar position="static">
         <Toolbar sx={{ gap: 1 }}>
+          <IconButton
+            color="inherit"
+            edge="start"
+            onClick={() => setDrawerOpen(true)}
+            sx={{ mr: 1 }}
+            aria-label="メニューを開く"
+          >
+            <MenuIcon />
+          </IconButton>
+
           <Typography variant="h6" sx={{ mr: 2 }}>FlowPT Cache</Typography>
 
-          {/* ページナビゲーション */}
-          <Tabs
-            value={activeTab === -1 ? 0 : activeTab}
-            textColor="inherit"
-            indicatorColor="secondary"
-            sx={{ flexGrow: 1 }}
-          >
-            {NAV_TABS.map((t) => (
-              <Tab
-                key={t.path}
-                label={t.label}
-                component={NavLink}
-                to={t.path}
-                sx={{ color: "inherit", opacity: 0.8, "&.active": { opacity: 1 } }}
-              />
-            ))}
-          </Tabs>
+          <Box sx={{ flexGrow: 1 }} />
 
           <Tooltip title={`全て元に戻す（${pastCount}件）`}>
             <span>
@@ -106,7 +103,6 @@ function AppContent() {
             Commit {pendingCount > 0 ? `(${pendingCount})` : ""}
           </Button>
 
-          {/* ログインユーザー表示 / ShotGrid ログインボタン */}
           {isAuthenticated && user ? (
             <Tooltip title="ログアウト">
               <Chip
@@ -136,6 +132,27 @@ function AppContent() {
         </Toolbar>
       </AppBar>
 
+      {/* Hamburger Drawer */}
+      <Drawer anchor="left" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        <Box sx={{ width: 220 }} role="presentation">
+          <List>
+            {NAV_ITEMS.map((item) => (
+              <ListItemButton
+                key={item.path}
+                component={NavLink}
+                to={item.path}
+                onClick={() => setDrawerOpen(false)}
+                sx={{
+                  "&.active": { backgroundColor: "action.selected" },
+                }}
+              >
+                <ListItemText primary={item.label} />
+              </ListItemButton>
+            ))}
+          </List>
+        </Box>
+      </Drawer>
+
       <Box sx={{ flex: 1, overflow: "hidden" }}>
         <Routes>
           <Route
@@ -163,6 +180,22 @@ function AppContent() {
             element={
               <Box sx={{ height: "100%", overflow: "hidden" }}>
                 <TimeLogPage />
+              </Box>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <Box sx={{ height: "100%", overflow: "auto", p: 2 }}>
+                <HistoryPage />
+              </Box>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <Box sx={{ height: "100%", overflow: "auto" }}>
+                <SettingsPage />
               </Box>
             }
           />
@@ -205,8 +238,12 @@ export default function App() {
       <SessionProvider>
         <EntityProvider>
           <ScheduleFilterProvider>
-            <CssBaseline />
-            <AppContent />
+            <TimeLogFilterProvider>
+              <SettingsProvider>
+                <CssBaseline />
+                <AppContent />
+              </SettingsProvider>
+            </TimeLogFilterProvider>
           </ScheduleFilterProvider>
         </EntityProvider>
       </SessionProvider>

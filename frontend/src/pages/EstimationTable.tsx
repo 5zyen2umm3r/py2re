@@ -7,21 +7,16 @@
  *     セル: 当該HumanUser × 当該月のEstimation工数
  */
 import React, { useCallback, useMemo } from "react";
-import {
-  Box, FormControl, InputLabel, Select, MenuItem as MuiMenuItem, Typography,
-} from "@mui/material";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import dayjs from "dayjs";
-import { FlexTable } from "./FlexTable/FlexTable";
-import { ColumnDef, RowDef } from "./FlexTable/types";
-import { DynamicForm } from "./DynamicForm/DynamicForm";
-import { useDynamicForm } from "./DynamicForm/useDynamicForm";
-import { FieldDef } from "./DynamicForm/types";
+import { Box, Typography } from "@mui/material";
+import { FlexTable } from "../components/FlexTable/FlexTable";
+import { ColumnDef, RowDef } from "../components/FlexTable/types";
+import { DynamicForm } from "../components/DynamicForm/DynamicForm";
+import { useDynamicForm } from "../components/DynamicForm/useDynamicForm";
+import { FieldDef } from "../components/DynamicForm/types";
 import { useEntities } from "../context/EntityContext";
 import { useScheduleFilter } from "../context/ScheduleFilterContext";
 import { FlowEntity } from "../api/entities";
+import { ScheduleFilterBar } from "../components/ScheduleFilterBar/ScheduleFilterBar";
 
 // ---- 月次列 ----
 const ALL_MONTHS: Date[] = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1));
@@ -37,13 +32,8 @@ const HOURS_PER_MONTH = 160;
 
 export function EstimationTable() {
   const { state, patch, create, remove, getList, getAll } = useEntities();
-  const { selectedProjectIds, rangeStart, rangeEnd, setSelectedProjects, setRangeStart, setRangeEnd } = useScheduleFilter();
+  const { selectedProjectIds, rangeStart, rangeEnd } = useScheduleFilter();
   const { formProps, openForm } = useDynamicForm();
-
-  const projects = getList("Project");
-  const selectedProject = selectedProjectIds.length > 0
-    ? (state.Project[selectedProjectIds[0]] ?? undefined)
-    : undefined;
 
   // 対象期間フィルタで月次列を絞り込む
   const MONTHS = useMemo(() => {
@@ -109,9 +99,9 @@ export function EstimationTable() {
   const rowUsers: RowDef<FlowEntity> = {
     label: "ユーザ集計",
     entityType: "HumanUser",
-    filter: selectedProject
+    filter: selectedProjectIds.length > 0
       ? (u) => Array.isArray(u['projects'])
-          ? (u['projects'] as { id: number }[]).some((p) => p.id === selectedProject.id)
+          ? (u['projects'] as { id: number }[]).some((p) => selectedProjectIds.includes(p.id))
           : false
       : undefined,
     value: (entity) => entity ? [entity] : [],
@@ -125,7 +115,7 @@ export function EstimationTable() {
           .filter((e) =>
             (e.sg_user as FlowEntity)?.id === user?.id &&
             isSameMonth(e.sg_month as string, month) &&
-            (!selectedProject || (e.project as FlowEntity)?.id === selectedProject.id)
+            (selectedProjectIds.length === 0 || selectedProjectIds.includes((e.project as FlowEntity)?.id as number))
           )
           .reduce((sum, e) => sum + ((e.sg_hours as number) ?? 0), 0);
       },
@@ -139,8 +129,8 @@ export function EstimationTable() {
   const rowAssets: RowDef<FlowEntity> = {
     label: "工数見積",
     entityType: "Asset",
-    filter: selectedProject
-      ? (a) => (a['project'] as { id: number } | undefined)?.id === selectedProject.id
+    filter: selectedProjectIds.length > 0
+      ? (a) => selectedProjectIds.includes((a['project'] as { id: number } | undefined)?.id as number)
       : undefined,
     value: (entity) => entity ? [entity] : [],
     display: (asset) => (asset as FlowEntity)?.code as string ?? "",
@@ -150,7 +140,7 @@ export function EstimationTable() {
       value: (asset: FlowEntity) => {
         const estimations = getList("Estimation").filter(
           (e) => (e.sg_asset as FlowEntity)?.id === asset.id &&
-                 (!selectedProject || (e.project as FlowEntity)?.id === selectedProject.id)
+                 (selectedProjectIds.length === 0 || selectedProjectIds.includes((e.project as FlowEntity)?.id as number))
         );
         const userIds = [...new Set(estimations.map((e) => (e.sg_user as FlowEntity)?.id).filter(Boolean))];
         return userIds.map((uid) => state.HumanUser[uid]).filter(Boolean) as FlowEntity[];
@@ -170,7 +160,7 @@ export function EstimationTable() {
                 (e) =>
                   (e.sg_asset as FlowEntity)?.id === asset.id &&
                   (e.sg_user  as FlowEntity)?.id === user.id &&
-                  (!selectedProject || (e.project as FlowEntity)?.id === selectedProject.id)
+                  (selectedProjectIds.length === 0 || selectedProjectIds.includes((e.project as FlowEntity)?.id as number))
               );
               if (targets.length === 0) return;
               if (confirm(`${(user.name as string)} の Estimation ${targets.length}件を削除しますか?`)) {
@@ -193,7 +183,7 @@ export function EstimationTable() {
                 title: "Estimationを編集",
                 fields: estimationFields(
                   state.Asset[(est.sg_asset as FlowEntity)?.id] ?? {} as FlowEntity,
-                  selectedProject
+                  state.Project[(est.project as FlowEntity)?.id] ?? undefined
                 ),
                 defaultValues: {
                   project:      (est.project   as FlowEntity)?.id,
@@ -266,16 +256,19 @@ export function EstimationTable() {
         {
           label: "Assetを追加",
           action: () => {
-            if (!selectedProject) return;
+            if (selectedProjectIds.length === 0) return;
+            const projectId = selectedProjectIds[0];
+            const project = state.Project[projectId];
+            if (!project) return;
             openForm({
               title: "Assetを追加",
-              fields: assetFields(selectedProject),
-              defaultValues: { project: selectedProject.id },
+              fields: assetFields(project),
+              defaultValues: { project: project.id },
               onSubmit: (values) => {
                 create("Asset", {
                   code:          values.code,
                   sg_asset_type: values.sg_asset_type,
-                  project:       { type: "Project", id: selectedProject.id },
+                  project:       { type: "Project", id: project.id },
                 });
               },
             });
@@ -294,17 +287,20 @@ export function EstimationTable() {
           label: "Estimationを追加",
           action: ({ rowChain }) => {
             const asset = rowChain[0] as FlowEntity;
+            const assetProject = asset.project
+              ? state.Project[(asset.project as { id: number }).id]
+              : undefined;
             openForm({
               title: "Estimationを追加",
-              fields: estimationFields(asset, selectedProject),
+              fields: estimationFields(asset, assetProject),
               defaultValues: {
-                project:  selectedProject?.id,
+                project:  assetProject?.id,
                 sg_asset: asset.id,
               },
               onSubmit: (values) => {
                 create("Estimation", {
                   sg_asset: { type: "Asset",     id: asset.id },
-                  project:  selectedProject ? { type: "Project", id: selectedProject.id } : undefined,
+                  project:  assetProject ? { type: "Project", id: assetProject.id } : undefined,
                   sg_user:  { type: "HumanUser", id: values.sg_user },
                   sg_month: values.sg_month,
                   sg_hours: values.sg_man_months as number,
@@ -319,46 +315,7 @@ export function EstimationTable() {
 
   return (
     <Box>
-      {/* Project選択 */}
-      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel>Project</InputLabel>
-          <Select
-            value={selectedProjectIds[0] ?? ""}
-            label="Project"
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val === "") {
-                setSelectedProjects([]);
-              } else {
-                const p = projects.find((p) => p.id === val);
-                if (p) setSelectedProjects([p]);
-              }
-            }}
-          >
-            <MuiMenuItem value="">（全て）</MuiMenuItem>
-            {projects.map((p) => (
-              <MuiMenuItem key={p.id} value={p.id}>{p.name as string}</MuiMenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
-          <DatePicker
-            label="対象期間 開始"
-            views={['year', 'month']}
-            value={rangeStart ? dayjs(rangeStart) : null}
-            onChange={(val) => setRangeStart(val ? val.format('YYYY-MM-DD') : null)}
-            slotProps={{ textField: { size: 'small' } }}
-          />
-          <DatePicker
-            label="対象期間 終了"
-            views={['year', 'month']}
-            value={rangeEnd ? dayjs(rangeEnd) : null}
-            onChange={(val) => setRangeEnd(val ? val.format('YYYY-MM-DD') : null)}
-            slotProps={{ textField: { size: 'small' } }}
-          />
-        </LocalizationProvider>
-      </Box>
+      <ScheduleFilterBar />
 
       <FlexTable
         columns={columns as ColumnDef[]}

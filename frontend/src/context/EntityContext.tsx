@@ -18,7 +18,7 @@ import { entityApi, EntityType, FlowEntity } from "../api/entities";
 type EntityMap = Record<number | string, FlowEntity>;
 type StoreState = Record<EntityType, EntityMap>;
 
-interface HistoryEntry {
+export interface HistoryEntry {
   type: EntityType;
   id: number | string;
   before: FlowEntity | undefined;
@@ -318,6 +318,7 @@ interface EntityContextValue {
   getList: (type: EntityType) => FlowEntity[];
   /** 全エンティティタイプを Record<EntityType, FlowEntity[]> で返す */
   getAll: () => Record<EntityType, FlowEntity[]>;
+  pastEntries: HistoryEntry[][];
 }
 
 const EntityContext = createContext<EntityContextValue | null>(null);
@@ -507,6 +508,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       resolve,
       getList,
       getAll,
+      pastEntries: store.past,
     }),
     [
       store,

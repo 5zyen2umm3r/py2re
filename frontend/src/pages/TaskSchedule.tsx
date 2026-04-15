@@ -1,12 +1,9 @@
 import React, { CSSProperties, useState, useCallback, useMemo } from 'react';
-import { Box, Autocomplete, TextField } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import dayjs from 'dayjs';
+import { Box } from '@mui/material';
 import { useEntities } from '../context/EntityContext';
 import { useScheduleFilter } from '../context/ScheduleFilterContext';
 import { FlowEntity } from '../api/entities';
+import { ScheduleFilterBar } from '../components/ScheduleFilterBar/ScheduleFilterBar';
 import { FlexTable } from '../components/FlexTable/FlexTable';
 import { BarDef, BarContextMenuDef, ColumnDef, RowDef } from '../components/FlexTable/types';
 import { DynamicForm } from '../components/DynamicForm/DynamicForm';
@@ -59,24 +56,12 @@ function getTaskStyle(task: FlowEntity): CSSProperties {
 
 export function TaskSchedule() {
   const { getList, patch, create, remove, getAll } = useEntities();
-  const {
-    selectedProjectIds, rangeStart, rangeEnd,
-    setSelectedProjects, setRangeStart, setRangeEnd,
-  } = useScheduleFilter();
+  const { selectedProjectIds, rangeStart, rangeEnd } = useScheduleFilter();
 
   const [granularity, setGranularity] = useState<TimeGranularity>('week');
   const { formProps, openForm } = useDynamicForm();
 
   const tasks = getList('Task');
-  const assets = getList('Asset');
-  const projects = getList('Project');
-  const users = getList('HumanUser');
-
-  // Context から selectedProjects を復元（Autocomplete の value 用）
-  const selectedProjects = useMemo(
-    () => projects.filter((p) => selectedProjectIds.includes(p.id as number)),
-    [projects, selectedProjectIds],
-  );
 
   // 時系列列配列（対象期間を反映）
   const timeCols = useMemo(
@@ -277,46 +262,20 @@ export function TaskSchedule() {
   const entities = useMemo(() => getAll(), [getAll]);
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        {/* フィルタバー */}
-        <Box sx={{ p: 1, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Autocomplete
-            multiple
-            options={projects}
-            getOptionLabel={(p) => String(p['name'] ?? p.id)}
-            value={selectedProjects}
-            onChange={(_e, val) => setSelectedProjects(val)}
-            renderInput={(params) => (
-              <TextField {...params} label="プロジェクト" size="small" />
-            )}
-            sx={{ minWidth: 240 }}
-          />
-          <DatePicker
-            label="開始日"
-            value={rangeStart ? dayjs(rangeStart) : null}
-            onChange={(val) => setRangeStart(val ? val.format('YYYY-MM-DD') : null)}
-            slotProps={{ textField: { size: 'small' } }}
-          />
-          <DatePicker
-            label="終了日"
-            value={rangeEnd ? dayjs(rangeEnd) : null}
-            onChange={(val) => setRangeEnd(val ? val.format('YYYY-MM-DD') : null)}
-            slotProps={{ textField: { size: 'small' } }}
-          />
-        </Box>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* フィルタバー */}
+      <ScheduleFilterBar />
 
-        {/* ガントテーブル（Ctrl+ホイールで粒度切り替え） */}
-        <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }} onWheel={handleWheel}>
-          <FlexTable
-            columns={columns}
-            rows={[assetRowDef]}
-            entities={entities}
-          />
-        </Box>
-
-        <DynamicForm {...formProps} />
+      {/* ガントテーブル（Ctrl+ホイールで粒度切り替え） */}
+      <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }} onWheel={handleWheel}>
+        <FlexTable
+          columns={columns}
+          rows={[assetRowDef]}
+          entities={entities}
+        />
       </Box>
-    </LocalizationProvider>
+
+      <DynamicForm {...formProps} />
+    </Box>
   );
 }

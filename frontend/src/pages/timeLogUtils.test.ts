@@ -267,8 +267,8 @@ describe("Feature: timelog-page, Property 7: timeToBarPosition then barPositionT
 // -----------------------------------------------------------------------
 describe("Feature: timelog-page, Property 8: after resolveOverlaps, no two TimeLogs overlap", () => {
   // Arbitrary for a TimeLogEntry with ISO datetime on 2000-01-01
-  const arbTimeLogEntry: fc.Arbitrary<TimeLogEntry> = fc.record({
-    id: fc.oneof(fc.integer({ min: 1, max: 9999 }), fc.string({ minLength: 1, maxLength: 8 })),
+  const arbTimeLogEntry = (id: number): fc.Arbitrary<TimeLogEntry> => fc.record({
+    id: fc.constant(id),
     // sg_start_time: random minute offset 0-1380 on 2000-01-01
     sg_start_time: fc.integer({ min: 0, max: 1380 }).map((m) => {
       const h = Math.floor(m / 60);
@@ -278,10 +278,16 @@ describe("Feature: timelog-page, Property 8: after resolveOverlaps, no two TimeL
     duration: fc.integer({ min: 1, max: 120 }),
   });
 
+  // Generate an array of entries with unique IDs
+  const arbTimeLogEntries: fc.Arbitrary<TimeLogEntry[]> = fc.integer({ min: 0, max: 10 }).chain((len) => {
+    if (len === 0) return fc.constant([]);
+    return fc.tuple(...Array.from({ length: len }, (_, i) => arbTimeLogEntry(i + 1)));
+  });
+
   it("no two entries overlap after resolveOverlaps is applied", () => {
     fc.assert(
       fc.property(
-        fc.array(arbTimeLogEntry, { minLength: 0, maxLength: 10 }),
+        arbTimeLogEntries,
         (entries) => {
           const patches = resolveOverlaps(entries);
 
