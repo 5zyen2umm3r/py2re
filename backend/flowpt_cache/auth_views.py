@@ -1,11 +1,23 @@
 """認証・セッション関連ビュー"""
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
+from django.contrib.sessions.backends.db import SessionStore
 from django.middleware.csrf import get_token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+
+
+def _ensure_session(request):
+    """
+    request.session が存在しない場合（Qt UI など file:// 経由の起動時）に
+    セッションを手動で初期化する。
+    SessionMiddleware が正常に動作している環境では何もしない。
+    """
+    if not hasattr(request, "session") or request.session is None:
+        request.session = SessionStore()
+        request.session.create()
 
 
 def _user_data(user) -> dict:
@@ -64,6 +76,7 @@ def login_view(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
+    _ensure_session(request)
     login(request, user)
     return Response({
         "isAuthenticated": True,
@@ -152,6 +165,7 @@ def sg_login_view(request):
 
         # パスワード認証を使わないためログイン時にバックエンドを明示
         user.backend = "django.contrib.auth.backends.ModelBackend"
+        _ensure_session(request)
         login(request, user)
 
         return Response({
