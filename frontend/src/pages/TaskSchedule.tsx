@@ -58,7 +58,7 @@ function getTaskStyle(task: FlowEntity): CSSProperties {
 // ── メインコンポーネント ──────────────────────────────────────
 
 export function TaskSchedule() {
-  const { getList, patch, create, remove } = useEntities();
+  const { getList, patch, create, remove, getAll } = useEntities();
   const {
     selectedProjectIds, rangeStart, rangeEnd,
     setSelectedProjects, setRangeStart, setRangeEnd,
@@ -72,16 +72,11 @@ export function TaskSchedule() {
   const projects = getList('Project');
   const users = getList('HumanUser');
 
-  // Context から selectedProjects を復元
+  // Context から selectedProjects を復元（Autocomplete の value 用）
   const selectedProjects = useMemo(
     () => projects.filter((p) => selectedProjectIds.includes(p.id as number)),
     [projects, selectedProjectIds],
   );
-
-  // プロジェクトフィルタ
-  const filteredAssets = selectedProjects.length === 0
-    ? assets
-    : assets.filter(a => selectedProjects.some(p => (a['project'] as any)?.id === p.id));
 
   // 時系列列配列（対象期間を反映）
   const timeCols = useMemo(
@@ -203,6 +198,9 @@ export function TaskSchedule() {
   // RowDef
   const assetRowDef: RowDef = useMemo(() => ({
     entityType: 'Asset',
+    filter: selectedProjectIds.length > 0
+      ? (a) => selectedProjectIds.includes((a['project'] as any)?.id)
+      : undefined,
     value: (asset) => [asset],
     display: (asset) => String((asset as FlowEntity)?.['code'] ?? ''),
     bar: barDef,
@@ -267,7 +265,7 @@ export function TaskSchedule() {
         },
       ],
     },
-  }), [barDef, create, remove, openForm]);
+  }), [barDef, create, remove, openForm, selectedProjectIds]);
 
   // ColumnDef（時系列列）
   const columns: ColumnDef[] = useMemo(() => [{
@@ -276,16 +274,7 @@ export function TaskSchedule() {
   }], [timeCols, granularity]);
 
   // entities
-  const entities = useMemo(() => ({
-    Task: tasks,
-    Asset: filteredAssets,
-    Project: projects,
-    HumanUser: users,
-    Phase: [],
-    Step: [],
-    Estimation: [],
-    TimeLog: [],
-  }), [tasks, filteredAssets, projects, users]);
+  const entities = useMemo(() => getAll(), [getAll]);
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>

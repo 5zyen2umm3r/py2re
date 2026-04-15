@@ -36,7 +36,7 @@ function isSameMonth(dateStr: string | undefined, month: Date): boolean {
 const HOURS_PER_MONTH = 160;
 
 export function EstimationTable() {
-  const { state, patch, create, remove, getList } = useEntities();
+  const { state, patch, create, remove, getList, getAll } = useEntities();
   const { selectedProjectIds, rangeStart, rangeEnd, setSelectedProjects, setRangeStart, setRangeEnd } = useScheduleFilter();
   const { formProps, openForm } = useDynamicForm();
 
@@ -60,16 +60,7 @@ export function EstimationTable() {
     });
   }, [rangeStart, rangeEnd]);
 
-  const allEntities = useMemo(() => ({
-    HumanUser: getList("HumanUser"),
-    Project: projects,
-    Asset: getList("Asset"),
-    Task: getList("Task"),
-    Phase: getList("Phase"),
-    Step: getList("Step"),
-    Estimation: getList("Estimation"),
-    TimeLog: getList("TimeLog"),
-  }), [state]);
+  const allEntities = useMemo(() => getAll(), [getAll]);
 
   // ---- フォームフィールド定義ヘルパー ----
 
@@ -118,7 +109,11 @@ export function EstimationTable() {
   const rowUsers: RowDef<FlowEntity> = {
     label: "ユーザ集計",
     entityType: "HumanUser",
-    filter: selectedProject ? { "projects.id": selectedProject.id } : undefined,
+    filter: selectedProject
+      ? (u) => Array.isArray(u['projects'])
+          ? (u['projects'] as { id: number }[]).some((p) => p.id === selectedProject.id)
+          : false
+      : undefined,
     value: (entity) => entity ? [entity] : [],
     display: (user) => (user as FlowEntity)?.name as string ?? "",
     cell: {
@@ -144,7 +139,9 @@ export function EstimationTable() {
   const rowAssets: RowDef<FlowEntity> = {
     label: "工数見積",
     entityType: "Asset",
-    filter: selectedProject ? { "project.id": selectedProject.id } : undefined,
+    filter: selectedProject
+      ? (a) => (a['project'] as { id: number } | undefined)?.id === selectedProject.id
+      : undefined,
     value: (entity) => entity ? [entity] : [],
     display: (asset) => (asset as FlowEntity)?.code as string ?? "",
 

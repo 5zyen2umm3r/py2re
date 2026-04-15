@@ -429,17 +429,9 @@ function BarOverlay({
 
 // ---- ユーティリティ ----
 
-function filterEntities(entities: FlowEntity[], filter?: Record<string, unknown>): FlowEntity[] {
+function filterEntities(entities: FlowEntity[], filter?: (entity: FlowEntity) => boolean): FlowEntity[] {
   if (!filter) return entities;
-  return entities.filter((e) =>
-    Object.entries(filter).every(([k, v]) => {
-      const val = e[k];
-      if (Array.isArray(v)) return v.includes(val);
-      if (v && typeof v === "object" && "id" in (v as object))
-        return (val as FlowEntity)?.id === (v as FlowEntity).id;
-      return val === v;
-    })
-  );
+  return entities.filter(filter);
 }
 
 // ---- 行ノード型 ----

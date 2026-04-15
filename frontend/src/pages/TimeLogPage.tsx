@@ -72,7 +72,7 @@ export function TimeLogPage(): JSX.Element {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
   // コンテキスト利用
-  const { getList, patch, create, remove, load } = useEntities();
+  const { getList, patch, create, remove, load, getAll } = useEntities();
   const { rangeStart, rangeEnd, setRangeStart, setRangeEnd } = useScheduleFilter();
 
   // 5.11 マウント時に TimeLog をロード
@@ -308,16 +308,7 @@ export function TimeLogPage(): JSX.Element {
   }], [dateRows, timeLogBarDef, dateRowContextMenuItems]);
 
   // entities オブジェクト（TimeLog を含む）
-  const entities = useMemo(() => ({
-    Task: tasks,
-    Asset: assets,
-    Project: projects,
-    HumanUser: users,
-    Phase: [],
-    Step: [],
-    Estimation: [],
-    TimeLog: timeLogs,
-  }), [tasks, assets, projects, users, timeLogs]);
+  const entities = useMemo(() => getAll(), [getAll]);
 
   // 5.3 HighlightZone 設定 UI のハンドラ
   const handleAddHighlightZone = useCallback(() => {

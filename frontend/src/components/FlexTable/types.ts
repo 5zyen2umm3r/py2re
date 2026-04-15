@@ -63,7 +63,7 @@ export interface SubAxis<TValue> {
 /** 列定義 */
 export interface ColumnDef<TValue = unknown> {
   entityType?: EntityType;
-  filter?: Record<string, unknown>;
+  filter?: (entity: FlowEntity) => boolean;
   value?: (entity?: FlowEntity) => TValue[];
   display?: DisplayFn<TValue>;
   highlight?: StyleFn<TValue>;
@@ -103,7 +103,7 @@ export interface CellDef<TValue = unknown> {
 /** 行定義 */
 export interface RowDef<TValue = unknown> {
   entityType?: EntityType;
-  filter?: Record<string, unknown>;
+  filter?: (entity: FlowEntity) => boolean;
   value: (entity?: FlowEntity) => TValue[];
   display?: DisplayFn<TValue>;
   highlight?: StyleFn<TValue>;

@@ -6,6 +6,7 @@
     "configurations": [
         {
             "name": "Django",
+            "consoleName": "backend",
             "type": "debugpy",
             "request": "launch",
             "args": [

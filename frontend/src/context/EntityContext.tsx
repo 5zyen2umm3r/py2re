@@ -316,6 +316,8 @@ interface EntityContextValue {
     ref: { type: EntityType; id: number } | null | undefined,
   ) => FlowEntity | undefined;
   getList: (type: EntityType) => FlowEntity[];
+  /** 全エンティティタイプを Record<EntityType, FlowEntity[]> で返す */
+  getAll: () => Record<EntityType, FlowEntity[]>;
 }
 
 const EntityContext = createContext<EntityContextValue | null>(null);
@@ -474,6 +476,14 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     [store.state],
   );
 
+  const getAll = useCallback(
+    (): Record<EntityType, FlowEntity[]> =>
+      Object.fromEntries(
+        ENTITY_TYPES.map((t) => [t, Object.values(store.state[t])])
+      ) as Record<EntityType, FlowEntity[]>,
+    [store.state],
+  );
+
   const value = useMemo<EntityContextValue>(
     () => ({
       state: store.state,
@@ -496,6 +506,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       getPendingSummary,
       resolve,
       getList,
+      getAll,
     }),
     [
       store,
@@ -513,6 +524,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       getPendingSummary,
       resolve,
       getList,
+      getAll,
     ],
   );
 
