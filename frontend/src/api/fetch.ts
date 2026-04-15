@@ -77,3 +77,4 @@ const getCookie = (name: string | null) => {
       }
     }
   }
+}
