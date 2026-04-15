@@ -10,6 +10,7 @@ import { FlowEntity } from '../api/entities';
 import { FlexTable } from '../components/FlexTable/FlexTable';
 import { BarDef, BarContextMenuDef, ColumnDef, RowDef } from '../components/FlexTable/types';
 import { DynamicForm } from '../components/DynamicForm/DynamicForm';
+import { useDynamicForm } from '../components/DynamicForm/useDynamicForm';
 import {
   TimeGranularity,
   generateTimeCols,
@@ -64,9 +65,7 @@ export function TaskSchedule() {
   } = useScheduleFilter();
 
   const [granularity, setGranularity] = useState<TimeGranularity>('week');
-  const [formAsset, setFormAsset] = useState<FlowEntity | null>(null);
-  const [editTask, setEditTask] = useState<FlowEntity | null>(null);
-  const [addAssetProjectId, setAddAssetProjectId] = useState<number | null>(null);
+  const { formProps, openForm } = useDynamicForm();
 
   const tasks = getList('Task');
   const assets = getList('Asset');
@@ -164,7 +163,29 @@ export function TaskSchedule() {
         {
           label: 'タスクを編集',
           action: ({ entity }: { entity: FlowEntity; rowChain: unknown[] }) => {
-            setEditTask(entity);
+            openForm({
+              title: 'タスクを編集',
+              fields: [
+                { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
+                { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
+                { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
+                { name: 'sg_user', label: '担当ユーザ', type: 'entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false },
+              ],
+              defaultValues: {
+                content: entity['content'],
+                start_date: entity['start_date'],
+                due_date: entity['due_date'],
+                sg_user: (entity['sg_user'] as any)?.id ?? null,
+              },
+              onSubmit: (values) => {
+                patch('Task', entity.id, {
+                  content: values['content'],
+                  start_date: values['start_date'],
+                  due_date: values['due_date'],
+                  sg_user: values['sg_user'] ? { type: 'HumanUser', id: values['sg_user'] } : null,
+                });
+              },
+            });
           },
         },
         {
@@ -177,7 +198,7 @@ export function TaskSchedule() {
         },
       ],
     } satisfies BarContextMenuDef,
-  }), [timeCols, granularity, patch, remove, setEditTask]);
+  }), [timeCols, granularity, patch, remove, openForm]);
 
   // RowDef
   const assetRowDef: RowDef = useMemo(() => ({
@@ -189,14 +210,49 @@ export function TaskSchedule() {
       items: [
         {
           label: 'タスクを追加',
-          action: ({ rowChain }) => setFormAsset(rowChain[0] as FlowEntity),
+          action: ({ rowChain }) => {
+            const asset = rowChain[0] as FlowEntity;
+            openForm({
+              title: 'タスクを追加',
+              fields: [
+                { name: 'entity', label: 'アセット', type: 'readonly' as const, render: () => String(asset?.['code'] ?? asset?.id ?? '') },
+                { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
+                { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
+                { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
+                { name: 'sg_user', label: '担当ユーザ', type: 'entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false },
+              ],
+              defaultValues: { entity: asset?.id },
+              onSubmit: (values) => {
+                create('Task', {
+                  entity: { type: 'Asset', id: asset.id },
+                  content: values['content'],
+                  start_date: values['start_date'],
+                  due_date: values['due_date'],
+                  sg_user: values['sg_user'] ? { type: 'HumanUser', id: values['sg_user'] } : undefined,
+                });
+              },
+            });
+          },
         },
         {
           label: 'アセットを追加',
           action: ({ rowChain }) => {
             const asset = rowChain[0] as FlowEntity | null;
             const projectId = (asset?.['project'] as any)?.id ?? null;
-            setAddAssetProjectId(projectId);
+            openForm({
+              title: 'アセットを追加',
+              fields: [
+                { name: 'code', label: 'アセットコード', type: 'text' as const, required: true },
+                { name: 'project', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'name', required: true },
+              ],
+              defaultValues: { project: projectId ?? undefined },
+              onSubmit: (values) => {
+                create('Asset', {
+                  code: values['code'],
+                  project: values['project'] ? { type: 'Project', id: values['project'] } : undefined,
+                });
+              },
+            });
           },
         },
         {
@@ -211,7 +267,7 @@ export function TaskSchedule() {
         },
       ],
     },
-  }), [barDef, remove]);
+  }), [barDef, create, remove, openForm]);
 
   // ColumnDef（時系列列）
   const columns: ColumnDef[] = useMemo(() => [{
@@ -230,89 +286,6 @@ export function TaskSchedule() {
     Estimation: [],
     TimeLog: [],
   }), [tasks, filteredAssets, projects, users]);
-
-  // タスク追加フォームのフィールド定義
-  const taskFormFields = useMemo(() => [    {
-      name: 'entity',
-      label: 'アセット',
-      type: 'readonly' as const,
-      render: () => String(formAsset?.['code'] ?? formAsset?.id ?? ''),
-    },
-    {
-      name: 'content',
-      label: 'タスク名',
-      type: 'text' as const,
-      required: true,
-    },
-    {
-      name: 'start_date',
-      label: '開始日',
-      type: 'date' as const,
-      required: true,
-    },
-    {
-      name: 'due_date',
-      label: '期限日',
-      type: 'date' as const,
-      required: true,
-    },
-    {
-      name: 'sg_user',
-      label: '担当ユーザ',
-      type: 'entity' as const,
-      entityType: 'HumanUser' as const,
-      labelField: 'name',
-      required: false,
-    },
-  ], [formAsset]);
-
-  // アセット追加フォームのフィールド定義
-  const addAssetFormFields = useMemo(() => [
-    {
-      name: 'code',
-      label: 'アセットコード',
-      type: 'text' as const,
-      required: true,
-    },
-    {
-      name: 'project',
-      label: 'プロジェクト',
-      type: 'entity' as const,
-      entityType: 'Project' as const,
-      labelField: 'name',
-      required: true,
-    },
-  ], []);
-
-  // タスク編集フォームのフィールド定義
-  const editTaskFormFields = useMemo(() => [
-    {
-      name: 'content',
-      label: 'タスク名',
-      type: 'text' as const,
-      required: true,
-    },
-    {
-      name: 'start_date',
-      label: '開始日',
-      type: 'date' as const,
-      required: true,
-    },
-    {
-      name: 'due_date',
-      label: '期限日',
-      type: 'date' as const,
-      required: true,
-    },
-    {
-      name: 'sg_user',
-      label: '担当ユーザ',
-      type: 'entity' as const,
-      entityType: 'HumanUser' as const,
-      labelField: 'name',
-      required: false,
-    },
-  ], []);
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -353,71 +326,7 @@ export function TaskSchedule() {
           />
         </Box>
 
-        {/* アセット追加フォーム */}
-        <DynamicForm
-          title="アセットを追加"
-          open={addAssetProjectId !== null}
-          onClose={() => setAddAssetProjectId(null)}
-          fields={addAssetFormFields}
-          defaultValues={{ project: addAssetProjectId ?? undefined }}
-          onSubmit={(values) => {
-            create('Asset', {
-              code: values['code'],
-              project: values['project']
-                ? { type: 'Project', id: values['project'] }
-                : undefined,
-            });
-            setAddAssetProjectId(null);
-          }}
-        />
-
-        {/* タスク追加フォーム */}
-        <DynamicForm
-          title="タスクを追加"
-          open={formAsset !== null}
-          onClose={() => setFormAsset(null)}
-          fields={taskFormFields}
-          defaultValues={{ entity: formAsset?.id }}
-          onSubmit={(values) => {
-            if (!formAsset) return;
-            create('Task', {
-              entity: { type: 'Asset', id: formAsset.id },
-              content: values['content'],
-              start_date: values['start_date'],
-              due_date: values['due_date'],
-              sg_user: values['sg_user']
-                ? { type: 'HumanUser', id: values['sg_user'] }
-                : undefined,
-            });
-            setFormAsset(null);
-          }}
-        />
-
-        {/* タスク編集フォーム */}
-        <DynamicForm
-          title="タスクを編集"
-          open={editTask !== null}
-          onClose={() => setEditTask(null)}
-          fields={editTaskFormFields}
-          defaultValues={{
-            content: editTask?.['content'],
-            start_date: editTask?.['start_date'],
-            due_date: editTask?.['due_date'],
-            sg_user: (editTask?.['sg_user'] as any)?.id ?? null,
-          }}
-          onSubmit={(values) => {
-            if (!editTask) return;
-            patch('Task', editTask.id, {
-              content: values['content'],
-              start_date: values['start_date'],
-              due_date: values['due_date'],
-              sg_user: values['sg_user']
-                ? { type: 'HumanUser', id: values['sg_user'] }
-                : null,
-            });
-            setEditTask(null);
-          }}
-        />
+        <DynamicForm {...formProps} />
       </Box>
     </LocalizationProvider>
   );

@@ -6,7 +6,7 @@
  *   副行: Assetに紐づくEstimationにアサインされているHumanUser
  *     セル: 当該HumanUser × 当該月のEstimation工数
  */
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   Box, FormControl, InputLabel, Select, MenuItem as MuiMenuItem, Typography,
 } from "@mui/material";
@@ -17,6 +17,7 @@ import dayjs from "dayjs";
 import { FlexTable } from "./FlexTable/FlexTable";
 import { ColumnDef, RowDef } from "./FlexTable/types";
 import { DynamicForm } from "./DynamicForm/DynamicForm";
+import { useDynamicForm } from "./DynamicForm/useDynamicForm";
 import { FieldDef } from "./DynamicForm/types";
 import { useEntities } from "../context/EntityContext";
 import { useScheduleFilter } from "../context/ScheduleFilterContext";
@@ -34,21 +35,15 @@ function isSameMonth(dateStr: string | undefined, month: Date): boolean {
 // 1人月 = 160h
 const HOURS_PER_MONTH = 160;
 
-// ---- フォーム状態型 ----
-type FormMode =
-  | { type: "addEstimation"; asset: FlowEntity }
-  | { type: "editEstimation"; estimation: FlowEntity }
-  | { type: "addAsset"; project: FlowEntity }
-  | null;
-
 export function EstimationTable() {
   const { state, patch, create, remove, getList } = useEntities();
   const { selectedProjectIds, rangeStart, rangeEnd, setSelectedProjects, setRangeStart, setRangeEnd } = useScheduleFilter();
-  const [selectedProjectId, setSelectedProjectId] = useState<number | "">("");
-  const [formMode, setFormMode] = useState<FormMode>(null);
+  const { formProps, openForm } = useDynamicForm();
 
   const projects = getList("Project");
-  const selectedProject = selectedProjectId !== "" ? state.Project[selectedProjectId] : undefined;
+  const selectedProject = selectedProjectIds.length > 0
+    ? (state.Project[selectedProjectIds[0]] ?? undefined)
+    : undefined;
 
   // 対象期間フィルタで月次列を絞り込む
   const MONTHS = useMemo(() => {
@@ -76,7 +71,7 @@ export function EstimationTable() {
     TimeLog: getList("TimeLog"),
   }), [state]);
 
-  // ---- フォームフィールド定義 ----
+  // ---- フォームフィールド定義ヘルパー ----
 
   const projectUserOptions = useMemo(() =>
     getList("HumanUser").map((u) => ({ value: u.id, label: u.name as string })),
@@ -108,35 +103,6 @@ export function EstimationTable() {
       options: ["Character", "Prop", "Vehicle", "Environment", "FX"].map((v) => ({ value: v, label: v })),
     },
   ], []);
-
-  // ---- フォーム送信 ----
-
-  const handleFormSubmit = useCallback((values: Record<string, unknown>) => {
-    if (!formMode) return;
-
-    if (formMode.type === "addEstimation") {
-      create("Estimation", {
-        sg_asset:   { type: "Asset",   id: formMode.asset.id },
-        project: selectedProject ? { type: "Project", id: selectedProject.id } : undefined,
-        sg_user:    { type: "HumanUser", id: values.sg_user },
-        sg_month:   values.sg_month,
-        sg_hours:   values.sg_man_months as number,
-      });
-    } else if (formMode.type === "editEstimation") {
-      patch("Estimation", formMode.estimation.id, {
-        sg_user:  { type: "HumanUser", id: values.sg_user },
-        sg_month: values.sg_month,
-        sg_hours: values.sg_man_months as number,
-      });
-    } else if (formMode.type === "addAsset") {
-      create("Asset", {
-        code:          values.code,
-        sg_asset_type: values.sg_asset_type,
-        project:       { type: "Project", id: formMode.project.id },
-      });
-    }
-    setFormMode(null);
-  }, [formMode, selectedProject, create, patch]);
 
   // ---- 列定義 ----
   const columns: ColumnDef<Date>[] = [{
@@ -225,7 +191,28 @@ export function EstimationTable() {
                   (e.sg_asset as FlowEntity)?.id === asset.id &&
                   (e.sg_user  as FlowEntity)?.id === user.id
               );
-              if (est) setFormMode({ type: "editEstimation", estimation: est });
+              if (!est) return;
+              openForm({
+                title: "Estimationを編集",
+                fields: estimationFields(
+                  state.Asset[(est.sg_asset as FlowEntity)?.id] ?? {} as FlowEntity,
+                  selectedProject
+                ),
+                defaultValues: {
+                  project:      (est.project   as FlowEntity)?.id,
+                  sg_asset:     (est.sg_asset   as FlowEntity)?.id,
+                  sg_user:      (est.sg_user    as FlowEntity)?.id,
+                  sg_month:     est.sg_month,
+                  sg_man_months: Math.round(((est.sg_hours as number) / HOURS_PER_MONTH) * 100) / 100,
+                },
+                onSubmit: (values) => {
+                  patch("Estimation", est.id, {
+                    sg_user:  { type: "HumanUser", id: values.sg_user },
+                    sg_month: values.sg_month,
+                    sg_hours: values.sg_man_months as number,
+                  });
+                },
+              });
             },
           },
         ],
@@ -282,7 +269,19 @@ export function EstimationTable() {
         {
           label: "Assetを追加",
           action: () => {
-            if (selectedProject) setFormMode({ type: "addAsset", project: selectedProject });
+            if (!selectedProject) return;
+            openForm({
+              title: "Assetを追加",
+              fields: assetFields(selectedProject),
+              defaultValues: { project: selectedProject.id },
+              onSubmit: (values) => {
+                create("Asset", {
+                  code:          values.code,
+                  sg_asset_type: values.sg_asset_type,
+                  project:       { type: "Project", id: selectedProject.id },
+                });
+              },
+            });
           },
         },
         {
@@ -298,52 +297,28 @@ export function EstimationTable() {
           label: "Estimationを追加",
           action: ({ rowChain }) => {
             const asset = rowChain[0] as FlowEntity;
-            setFormMode({ type: "addEstimation", asset });
+            openForm({
+              title: "Estimationを追加",
+              fields: estimationFields(asset, selectedProject),
+              defaultValues: {
+                project:  selectedProject?.id,
+                sg_asset: asset.id,
+              },
+              onSubmit: (values) => {
+                create("Estimation", {
+                  sg_asset: { type: "Asset",     id: asset.id },
+                  project:  selectedProject ? { type: "Project", id: selectedProject.id } : undefined,
+                  sg_user:  { type: "HumanUser", id: values.sg_user },
+                  sg_month: values.sg_month,
+                  sg_hours: values.sg_man_months as number,
+                });
+              },
+            });
           },
         },
       ],
     },
   };
-
-  // ---- フォーム設定の解決 ----
-  const formConfig = useMemo(() => {
-    if (!formMode) return null;
-    if (formMode.type === "addEstimation") {
-      return {
-        title: "Estimationを追加",
-        fields: estimationFields(formMode.asset, selectedProject),
-        defaultValues: {
-          project: selectedProject?.id,
-          sg_asset:   formMode.asset.id,
-        },
-      };
-    }
-    if (formMode.type === "editEstimation") {
-      const est = formMode.estimation;
-      return {
-        title: "Estimationを編集",
-        fields: estimationFields(
-          state.Asset[(est.sg_asset as FlowEntity)?.id] ?? {} as FlowEntity,
-          selectedProject
-        ),
-        defaultValues: {
-          project:    (est.project as FlowEntity)?.id,
-          sg_asset:      (est.sg_asset   as FlowEntity)?.id,
-          sg_user:       (est.sg_user    as FlowEntity)?.id,
-          sg_month:      est.sg_month,
-          sg_man_months: Math.round(((est.sg_hours as number) / HOURS_PER_MONTH) * 100) / 100,
-        },
-      };
-    }
-    if (formMode.type === "addAsset") {
-      return {
-        title: "Assetを追加",
-        fields: assetFields(formMode.project),
-        defaultValues: { project: formMode.project.id },
-      };
-    }
-    return null;
-  }, [formMode, selectedProject, state, estimationFields, assetFields]);
 
   return (
     <Box>
@@ -352,9 +327,17 @@ export function EstimationTable() {
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Project</InputLabel>
           <Select
-            value={selectedProjectId}
+            value={selectedProjectIds[0] ?? ""}
             label="Project"
-            onChange={(e) => setSelectedProjectId(e.target.value as number | "")}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "") {
+                setSelectedProjects([]);
+              } else {
+                const p = projects.find((p) => p.id === val);
+                if (p) setSelectedProjects([p]);
+              }
+            }}
           >
             <MuiMenuItem value="">（全て）</MuiMenuItem>
             {projects.map((p) => (
@@ -386,17 +369,7 @@ export function EstimationTable() {
         entities={allEntities}
       />
 
-      {/* 汎用フォームダイアログ */}
-      {formConfig && (
-        <DynamicForm
-          title={formConfig.title}
-          fields={formConfig.fields}
-          defaultValues={formConfig.defaultValues}
-          open={!!formMode}
-          onClose={() => setFormMode(null)}
-          onSubmit={handleFormSubmit}
-        />
-      )}
+      <DynamicForm {...formProps} />
     </Box>
   );
 }
