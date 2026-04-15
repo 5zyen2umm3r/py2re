@@ -31,6 +31,17 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+
+  const csrftoken = getCsrfToken();
+
+  if (csrftoken) {
+    if ("headers" in options) {
+      options.headers = { ...options.headers, ...{ "X-CSRFToken": csrftoken } };
+    } else {
+      options.headers = { "X-CSRFToken": csrftoken };
+    }
+  }
+
   const method = (options.method ?? "GET").toUpperCase();
   const body = options.body ? String(options.body) : "";
   const headers = JSON.stringify(options.headers ?? {});
@@ -44,3 +55,25 @@ export async function apiFetch<T = unknown>(
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
+
+const getCsrfToken = () => {
+  return getCookie("csrftoken");
+};
+
+const getSessionId = () => {
+  return getCookie("sessionid");
+};
+
+const getCookie = (name: string | null) => {
+  if (document.cookie && document.cookie !== "") {
+    if (!name) {
+      return document.cookie;
+    }
+
+    for (const cookie of document.cookie.split(";")) {
+      const [key, value] = cookie.trim().split("=");
+      if (key === name) {
+        return decodeURIComponent(value);
+      }
+    }
+  }

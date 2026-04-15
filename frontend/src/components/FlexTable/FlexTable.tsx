@@ -574,7 +574,7 @@ function buildSubNodes(
 // ---- 列展開 ----
 
 function expandColAxis(
-  def: { entityType?: EntityType; filter?: Record<string, unknown>; value?: (e?: FlowEntity) => unknown[]; sub?: SubAxis<unknown> },
+  def: { entityType?: EntityType; filter?: (entity: FlowEntity) => boolean; value?: (e?: FlowEntity) => unknown[]; sub?: SubAxis<unknown> },
   allEntities: Record<EntityType, FlowEntity[]>,
 ): unknown[][] {
   if (!def.value) return [[undefined]];
