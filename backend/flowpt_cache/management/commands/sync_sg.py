@@ -60,12 +60,12 @@ class Command(BaseCommand):
     def _print_result(self, entity_type: str, result: dict):
         if result.get("skipped", False):
             self.stdout.write(
-                f"  {entity_type}: created={result['created']}, "
-                f"updated={result['updated']}, deleted={result['deleted']} "
-                f"({result.get('mode', '-')})"
+                f"  {entity_type}: reason={result['reason']}, "
             )
         else:
             self.stdout.write(
-                f"  {entity_type}: reason={result['reason']}, "
+                f"  {entity_type}: created={result['created']}, "
+                f"updated={result['updated']}, deleted={result['deleted']} "
+                f"({result.get('mode', '-')})"
             )
 
