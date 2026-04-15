@@ -139,3 +139,8 @@ CORS_ALLOW_CREDENTIALS = True
 # セッション設定
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
+
+try:
+    from local import *
+except:
+    pass
