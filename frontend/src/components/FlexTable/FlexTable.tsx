@@ -866,6 +866,7 @@ function RowRenderer({
               padding: 0,
               border: 'none',
               pointerEvents: 'none',
+              zIndex: 0,
             }}
           >
             <BarOverlay
