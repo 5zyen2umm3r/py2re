@@ -199,7 +199,7 @@ export function TaskSchedule() {
             openForm({
               title: 'タスクを追加',
               fields: [
-                { name: 'entity', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'project', readonly: true },
+                { name: 'project', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'name', readonly: true },
                 { name: 'entity', label: 'アセット', type: 'entity' as const, entityType: 'Asset' as const, labelField: 'code', readonly: true },
                 { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
                 { name: 'start_date', label: '開始日', type: 'date' as const, required: true },

@@ -262,7 +262,7 @@ export function EstimationTable() {
               title: "Assetを追加",
               fields: [
                 { name: "project", label: "Project", type: "entity", entityType: "Project", required: true },
-                { name: "sg_phase", label: "Project", type: "entity", entityType: "Phase", required: true },
+                { name: "sg_phase", label: "Phase", type: "entity", entityType: "Phase", labelField: "code", required: true },
                 { name: "code",    label: "Asset名", type: "text", required: true },
                 {
                   name: "sg_asset_type", label: "アセットタイプ", type: "select", required: false,
