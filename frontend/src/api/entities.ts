@@ -10,7 +10,8 @@ export type EntityType =
   | "Phase"
   | "Step"
   | "Estimation"
-  | "TimeLog";
+  | "TimeLog"
+  | "SubProject";
 
 export interface FlowEntity {
   id: number;

@@ -17,6 +17,7 @@ import { useEntities } from "../context/EntityContext";
 import { useScheduleFilter } from "../context/ScheduleFilterContext";
 import { FlowEntity } from "../api/entities";
 import { ScheduleFilterBar } from "../components/ScheduleFilterBar/ScheduleFilterBar";
+import { buildAssetFilter } from "../utils/assetFilter";
 
 // ---- 月次列 ----
 const ALL_MONTHS: Date[] = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1));
@@ -32,8 +33,15 @@ const HOURS_PER_MONTH = 160;
 
 export function EstimationTable() {
   const { state, patch, create, remove, getList, getAll } = useEntities();
-  const { selectedProjectIds, rangeStart, rangeEnd } = useScheduleFilter();
+  const { selectedProjectIds, selectedSubProjectIds, selectedPhaseIds, rangeStart, rangeEnd } = useScheduleFilter();
   const { formProps, openForm } = useDynamicForm();
+
+  const allPhases = getList("Phase");
+
+  const assetFilter = useMemo(
+    () => buildAssetFilter(selectedProjectIds, selectedSubProjectIds, selectedPhaseIds, allPhases),
+    [selectedProjectIds, selectedSubProjectIds, selectedPhaseIds, allPhases],
+  );
 
   // 対象期間フィルタで月次列を絞り込む
   const MONTHS = useMemo(() => {
@@ -129,9 +137,7 @@ export function EstimationTable() {
   const rowAssets: RowDef<FlowEntity> = {
     label: "工数見積",
     entityType: "Asset",
-    filter: selectedProjectIds.length > 0
-      ? (a) => selectedProjectIds.includes((a['project'] as { id: number } | undefined)?.id as number)
-      : undefined,
+    filter: assetFilter,
     value: (entity) => entity ? [entity] : [],
     display: (asset) => (asset as FlowEntity)?.code as string ?? "",
 
@@ -139,8 +145,7 @@ export function EstimationTable() {
     sub: {
       value: (asset: FlowEntity) => {
         const estimations = getList("Estimation").filter(
-          (e) => (e.sg_asset as FlowEntity)?.id === asset.id &&
-                 (selectedProjectIds.length === 0 || selectedProjectIds.includes((e.project as FlowEntity)?.id as number))
+          (e) => (e.sg_asset as FlowEntity)?.id === asset.id
         );
         const userIds = [...new Set(estimations.map((e) => (e.sg_user as FlowEntity)?.id).filter(Boolean))];
         return userIds.map((uid) => state.HumanUser[uid]).filter(Boolean) as FlowEntity[];

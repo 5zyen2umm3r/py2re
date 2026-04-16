@@ -12,7 +12,7 @@
     },
     "Asset": {
       "filters": [["sg_status_list", "not_in", ["omt"]]],
-      "fields": ["id", "code", "sg_status_list", "project", "sg_asset_type", "tasks"],
+      "fields": ["id", "code", "sg_status_list", "project", "sg_asset_type", "sg_phase", "tasks"],
       "project_filter_field": "project"
     },
     "Task": {
@@ -22,7 +22,7 @@
     },
     "Phase": {
       "filters": [],
-      "fields": ["id", "code", "project", "start_date", "end_date"],
+      "fields": ["id", "code", "project", "sg_sub_project", "start_date", "end_date"],
       "project_filter_field": "project"
     },
     "Step": {
@@ -40,6 +40,12 @@
       "sync": false,
       "filters": [],
       "fields": ["id", "code", "sg_asset", "sg_user", "sg_hours", "sg_month", "project", "sg_phase", "sg_step"],
+      "project_filter_field": "project"
+    },
+    "SubProject": {
+      "type": "CustomEntity07",
+      "filters": [],
+      "fields": ["id", "code", "project"],
       "project_filter_field": "project"
     }
   }

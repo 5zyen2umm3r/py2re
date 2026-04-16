@@ -82,5 +82,15 @@
             "problemMatcher": [],
             "label": "npm: install",
         },
+        {
+            "label": "format config.json",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/backend/format_json.py", 
+                "${workspaceFolder}/backend/flowpt_cache/config.json",
+                "3"
+            ]
+        }
     ]
 }

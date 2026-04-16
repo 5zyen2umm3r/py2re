@@ -8,6 +8,7 @@ import { FlexTable } from '../components/FlexTable/FlexTable';
 import { BarDef, BarContextMenuDef, ColumnDef, RowDef } from '../components/FlexTable/types';
 import { DynamicForm } from '../components/DynamicForm/DynamicForm';
 import { useDynamicForm } from '../components/DynamicForm/useDynamicForm';
+import { buildAssetFilter } from '../utils/assetFilter';
 import {
   TimeGranularity,
   generateTimeCols,
@@ -56,12 +57,18 @@ function getTaskStyle(task: FlowEntity): CSSProperties {
 
 export function TaskSchedule() {
   const { getList, patch, create, remove, getAll } = useEntities();
-  const { selectedProjectIds, rangeStart, rangeEnd } = useScheduleFilter();
+  const { selectedProjectIds, selectedSubProjectIds, selectedPhaseIds, rangeStart, rangeEnd } = useScheduleFilter();
 
   const [granularity, setGranularity] = useState<TimeGranularity>('week');
   const { formProps, openForm } = useDynamicForm();
 
   const tasks = getList('Task');
+  const allPhases = getList('Phase');
+
+  const assetFilter = useMemo(
+    () => buildAssetFilter(selectedProjectIds, selectedSubProjectIds, selectedPhaseIds, allPhases),
+    [selectedProjectIds, selectedSubProjectIds, selectedPhaseIds, allPhases],
+  );
 
   // 時系列列配列（対象期間を反映）
   const timeCols = useMemo(
@@ -183,9 +190,7 @@ export function TaskSchedule() {
   // RowDef
   const assetRowDef: RowDef = useMemo(() => ({
     entityType: 'Asset',
-    filter: selectedProjectIds.length > 0
-      ? (a) => selectedProjectIds.includes((a['project'] as any)?.id)
-      : undefined,
+    filter: assetFilter,
     value: (asset) => [asset],
     display: (asset) => String((asset as FlowEntity)?.['code'] ?? ''),
     bar: barDef,
@@ -250,7 +255,7 @@ export function TaskSchedule() {
         },
       ],
     },
-  }), [barDef, create, remove, openForm, selectedProjectIds]);
+  }), [barDef, create, remove, openForm, assetFilter]);
 
   // ColumnDef（時系列列）
   const columns: ColumnDef[] = useMemo(() => [{
