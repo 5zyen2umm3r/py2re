@@ -204,7 +204,7 @@ export function TaskSchedule() {
                 { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
                 { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
                 { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
-                { name: 'sg_user', label: '担当ユーザ', type: 'entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false },
+                { name: 'sg_user', label: '担当ユーザ', type: 'entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)},
               ],
               defaultValues: { project: projectId , entity: asset?.id },
               onSubmit: (values) => {
