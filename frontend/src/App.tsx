@@ -4,8 +4,11 @@ import {
   CssBaseline, AppBar, Toolbar, Typography, Button, Box,
   Tooltip, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   List, ListItem, ListItemText, IconButton, Drawer, ListItemButton,
+  CircularProgress, Snackbar, Alert,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import SyncIcon from "@mui/icons-material/Sync";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { EntityProvider, useEntities, PendingDiffSummary } from "./context/EntityContext";
 import { ScheduleFilterProvider } from "./context/ScheduleFilterContext";
 import { TimeLogFilterProvider } from "./context/TimeLogFilterContext";
@@ -18,6 +21,7 @@ import { TimeLogPage } from "./pages/TimeLogPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { initQtChannel } from "./api/fetch";
+import { entityApi } from "./api/entities";
 
 const NAV_ITEMS = [
   { label: "工数表", path: "/" },
@@ -34,6 +38,36 @@ function AppContent() {
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [summary, setSummary] = useState<PendingDiffSummary[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [sgCommitting, setSgCommitting] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ message: string; severity: "success" | "error" } | null>(null);
+
+  const handleSgSync = async () => {
+    setSyncing(true);
+    try {
+      await entityApi.sync("all");
+      await loadAll();
+      setSnackbar({ message: "FlowPT から同期しました", severity: "success" });
+    } catch (e) {
+      setSnackbar({ message: `同期エラー: ${e}`, severity: "error" });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSgCommit = async () => {
+    setSgCommitting(true);
+    try {
+      // 全エンティティタイプに対して commit を実行
+      const types = ["HumanUser", "Project", "Asset", "Task", "Phase", "Step", "Estimation", "TimeLog"] as const;
+      await Promise.all(types.map((t) => entityApi.commit(t)));
+      setSnackbar({ message: "FlowPT へコミットしました", severity: "success" });
+    } catch (e) {
+      setSnackbar({ message: `コミットエラー: ${e}`, severity: "error" });
+    } finally {
+      setSgCommitting(false);
+    }
+  };
 
   const handleCommitClick = () => {
     const s = getPendingSummary();
@@ -96,6 +130,32 @@ function AppContent() {
             <span>
               <Button color="inherit" disabled={!canRedo} onClick={redoAll} sx={{ minWidth: 0, px: 1 }}>
                 ↪↪
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="FlowPT から全データを同期する">
+            <span>
+              <Button
+                color="inherit"
+                onClick={handleSgSync}
+                disabled={syncing}
+                startIcon={syncing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+                sx={{ whiteSpace: "nowrap" }}
+              >
+                SG 同期
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="ローカルの変更を FlowPT へコミットする">
+            <span>
+              <Button
+                color="inherit"
+                onClick={handleSgCommit}
+                disabled={sgCommitting}
+                startIcon={sgCommitting ? <CircularProgress size={14} color="inherit" /> : <CloudUploadIcon />}
+                sx={{ whiteSpace: "nowrap" }}
+              >
+                SG コミット
               </Button>
             </span>
           </Tooltip>
@@ -228,6 +288,17 @@ function AppContent() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={snackbar !== null}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity={snackbar?.severity} onClose={() => setSnackbar(null)} sx={{ width: "100%" }}>
+          {snackbar?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
