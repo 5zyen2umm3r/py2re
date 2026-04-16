@@ -218,7 +218,7 @@ function AppContent() {
           <Route
             path="/"
             element={
-              <Box sx={{ height: "100%", overflow: "auto", p: 2 }}>
+              <Box sx={{ height: "100%", overflow: "hidden" }}>
                 <EstimationTable />
               </Box>
             }

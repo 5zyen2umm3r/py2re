@@ -315,14 +315,16 @@ export function EstimationTable() {
   };
 
   return (
-    <Box>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <ScheduleFilterBar />
 
-      <FlexTable
-        columns={columns as ColumnDef[]}
-        rows={[rowUsers as RowDef, rowAssets as RowDef]}
-        entities={allEntities}
-      />
+      <Box sx={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+        <FlexTable
+          columns={columns as ColumnDef[]}
+          rows={[rowUsers as RowDef, rowAssets as RowDef]}
+          entities={allEntities}
+        />
+      </Box>
 
       <DynamicForm {...formProps} />
     </Box>
