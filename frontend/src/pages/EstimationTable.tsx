@@ -67,9 +67,9 @@ export function EstimationTable() {
     [state]
   );
 
-  const estimationFields = useCallback((asset: FlowEntity, project?: FlowEntity): FieldDef[] => [
-    { name: "project", label: "Project", type: "readonly", render: () => (project?.name as string) ?? "-" },
-    { name: "sg_asset",   label: "Asset",   type: "readonly", render: () => (asset.code as string) ?? "-" },
+  const estimationFields = useCallback((): FieldDef[] => [
+    { name: "project",  label: "Project", type: "entity", entityType: "Project", readonly: true },
+    { name: "sg_asset", label: "Asset",   type: "entity", entityType: "Asset",   readonly: true },
     {
       name: "sg_user", label: "Assign To", type: "select", required: true,
       options: projectUserOptions,
@@ -83,15 +83,6 @@ export function EstimationTable() {
       fromDisplay: (mm: number) => mm * HOURS_PER_MONTH,
     },
   ], [projectUserOptions]);
-
-  const assetFields = useCallback((project?: FlowEntity): FieldDef[] => [
-    { name: "project", label: "Project", type: "readonly", render: () => (project?.name as string) ?? "-" },
-    { name: "code",    label: "Asset名", type: "text", required: true },
-    {
-      name: "sg_asset_type", label: "アセットタイプ", type: "select", required: false,
-      options: ["Character", "Prop", "Vehicle", "Environment", "FX"].map((v) => ({ value: v, label: v })),
-    },
-  ], []);
 
   // ---- 列定義 ----
   const columns: ColumnDef<Date>[] = [{
@@ -186,10 +177,7 @@ export function EstimationTable() {
               if (!est) return;
               openForm({
                 title: "Estimationを編集",
-                fields: estimationFields(
-                  state.Asset[(est.sg_asset as FlowEntity)?.id] ?? {} as FlowEntity,
-                  state.Project[(est.project as FlowEntity)?.id] ?? undefined
-                ),
+                fields: estimationFields(),
                 defaultValues: {
                   project:      (est.project   as FlowEntity)?.id,
                   sg_asset:     (est.sg_asset   as FlowEntity)?.id,
@@ -199,7 +187,7 @@ export function EstimationTable() {
                 },
                 onSubmit: (values) => {
                   patch("Estimation", est.id, {
-                    sg_user:  { type: "HumanUser", id: values.sg_user },
+                    sg_user:  values.sg_user,
                     sg_month: values.sg_month,
                     sg_hours: values.sg_man_months as number,
                   });
@@ -260,21 +248,31 @@ export function EstimationTable() {
       items: [
         {
           label: "Assetを追加",
-          action: () => {
-            if (selectedProjectIds.length === 0) return;
-            const projectId = selectedProjectIds[0];
-            const project = state.Project[projectId];
-            if (!project) return;
+          action: ({rowChain}) => {
+            const refAsset = rowChain.length > 0 ? rowChain[0] as FlowEntity : null;
+            const projectId = 
+              refAsset ? (refAsset.project as FlowEntity)?.id :
+              selectedProjectIds.length > 0 ? selectedProjectIds[0] :
+              null;
+            const phaseId =
+              refAsset ? (refAsset.sg_phase as FlowEntity)?.id :
+              selectedPhaseIds.length > 0 ? selectedPhaseIds[0] :
+              null;
             openForm({
               title: "Assetを追加",
-              fields: assetFields(project),
-              defaultValues: { project: project.id },
+              fields: [
+                { name: "project", label: "Project", type: "entity", entityType: "Project", required: true },
+                { name: "sg_phase", label: "Project", type: "entity", entityType: "Phase", required: true },
+                { name: "code",    label: "Asset名", type: "text", required: true },
+                {
+                  name: "sg_asset_type", label: "アセットタイプ", type: "select", required: false,
+                  options: ["Character", "Prop", "Vehicle", "Environment",
+                     "FX"].map((v) => ({ value: v, label: v })),
+                },
+              ],
+              defaultValues: { project: projectId, sg_phase: phaseId },
               onSubmit: (values) => {
-                create("Asset", {
-                  code:          values.code,
-                  sg_asset_type: values.sg_asset_type,
-                  project:       { type: "Project", id: project.id },
-                });
+                create("Asset", values);
               },
             });
           },
@@ -297,18 +295,16 @@ export function EstimationTable() {
               : undefined;
             openForm({
               title: "Estimationを追加",
-              fields: estimationFields(asset, assetProject),
+              fields: estimationFields(),
               defaultValues: {
                 project:  assetProject?.id,
                 sg_asset: asset.id,
               },
               onSubmit: (values) => {
                 create("Estimation", {
-                  sg_asset: { type: "Asset",     id: asset.id },
-                  project:  assetProject ? { type: "Project", id: assetProject.id } : undefined,
-                  sg_user:  { type: "HumanUser", id: values.sg_user },
-                  sg_month: values.sg_month,
+                  ...values,
                   sg_hours: values.sg_man_months as number,
+                  sg_man_months: undefined,
                 });
               },
             });

@@ -165,12 +165,7 @@ export function TaskSchedule() {
                 sg_user: (entity['sg_user'] as any)?.id ?? null,
               },
               onSubmit: (values) => {
-                patch('Task', entity.id, {
-                  content: values['content'],
-                  start_date: values['start_date'],
-                  due_date: values['due_date'],
-                  sg_user: values['sg_user'] ? { type: 'HumanUser', id: values['sg_user'] } : null,
-                });
+                patch('Task', entity.id, values);
               },
             });
           },
@@ -200,24 +195,20 @@ export function TaskSchedule() {
           label: 'タスクを追加',
           action: ({ rowChain }) => {
             const asset = rowChain[0] as FlowEntity;
+            const projectId = (asset.project as FlowEntity)?.id;
             openForm({
               title: 'タスクを追加',
               fields: [
-                { name: 'entity', label: 'アセット', type: 'readonly' as const, render: () => String(asset?.['code'] ?? asset?.id ?? '') },
+                { name: 'entity', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'project', readonly: true },
+                { name: 'entity', label: 'アセット', type: 'entity' as const, entityType: 'Asset' as const, labelField: 'code', readonly: true },
                 { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
                 { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
                 { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
                 { name: 'sg_user', label: '担当ユーザ', type: 'entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false },
               ],
-              defaultValues: { entity: asset?.id },
+              defaultValues: { project: projectId , entity: asset?.id },
               onSubmit: (values) => {
-                create('Task', {
-                  entity: { type: 'Asset', id: asset.id },
-                  content: values['content'],
-                  start_date: values['start_date'],
-                  due_date: values['due_date'],
-                  sg_user: values['sg_user'] ? { type: 'HumanUser', id: values['sg_user'] } : undefined,
-                });
+                create('Task', values);
               },
             });
           },
@@ -235,10 +226,7 @@ export function TaskSchedule() {
               ],
               defaultValues: { project: projectId ?? undefined },
               onSubmit: (values) => {
-                create('Asset', {
-                  code: values['code'],
-                  project: values['project'] ? { type: 'Project', id: values['project'] } : undefined,
-                });
+                create('Asset', values);
               },
             });
           },

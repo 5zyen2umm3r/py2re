@@ -28,6 +28,44 @@ function FieldRenderer({
   // entity フィールド用にエンティティリストを取得
   const { getList } = useEntities();
 
+  // readonly フラグが立っている場合はラベル+値の読み取り専用表示
+  if (field.readonly) {
+    // entity 型は labelField でラベルを解決して表示
+    if (field.type === "entity") {
+      const entityList = getList(field.entityType);
+      const labelField = field.labelField ?? "name";
+      return (
+        <Controller
+          name={field.name}
+          control={control}
+          render={({ field: f }) => {
+            const entity = entityList.find((e) => e.id === f.value);
+            const label = entity ? String(entity[labelField] ?? entity.id) : String(f.value ?? "—");
+            return (
+              <Stack spacing={0.5}>
+                <Typography variant="caption" color="text.secondary">{field.label}</Typography>
+                <Typography variant="body2">{label}</Typography>
+              </Stack>
+            );
+          }}
+        />
+      );
+    }
+    // その他の型は値をそのまま文字列表示
+    return (
+      <Controller
+        name={field.name}
+        control={control}
+        render={({ field: f }) => (
+          <Stack spacing={0.5}>
+            <Typography variant="caption" color="text.secondary">{field.label}</Typography>
+            <Typography variant="body2">{String(f.value ?? "—")}</Typography>
+          </Stack>
+        )}
+      />
+    );
+  }
+
   switch (field.type) {
     case "readonly":
       return (
@@ -72,7 +110,8 @@ function FieldRenderer({
     case "entity": {
       const entityList = getList(field.entityType);
       const labelField = field.labelField ?? "name";
-      const options = entityList.map((e) => ({
+      const filteredList = field.filter ? entityList.filter(field.filter) : entityList;
+      const options = filteredList.map((e) => ({
         value: e.id,
         label: String(e[labelField] ?? e.id),
       }));
@@ -185,11 +224,28 @@ export function DynamicForm({ title, fields, defaultValues, open, onClose, onSub
 
   const handleClose = () => { reset(); onClose(); };
 
+  // entity フィールドの値（ID）を { type, id } 参照オブジェクトに変換してから onSubmit へ渡す
+  const handleFormSubmit = (rawValues: Record<string, unknown>) => {
+    const converted: Record<string, unknown> = { ...rawValues };
+    for (const field of fields) {
+      if (field.type === "entity") {
+        const id = rawValues[field.name];
+        if (id !== null && id !== undefined && id !== "") {
+          converted[field.name] = { type: field.entityType, id };
+        } else {
+          converted[field.name] = undefined;
+        }
+      }
+    }
+    onSubmit(converted);
+    handleClose();
+  };
+
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
         <DialogTitle>{title}</DialogTitle>
-        <form onSubmit={handleSubmit((v) => { onSubmit(v); handleClose(); })}>
+        <form onSubmit={handleSubmit(handleFormSubmit)}>
           <DialogContent>
             <Stack spacing={2} sx={{ pt: 0.5 }}>
               {fields.map((f) => (

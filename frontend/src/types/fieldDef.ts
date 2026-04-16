@@ -4,7 +4,6 @@
  */
 import { ReactNode } from "react";
 import { FlowEntity, EntityType } from "../api/entities";
-
 export type FieldType = "text" | "number" | "select" | "entity" | "date" | "readonly";
 
 interface FieldBase {
@@ -12,6 +11,8 @@ interface FieldBase {
   label: string;
   type: FieldType;
   required?: boolean;
+  /** true の場合、フォーム上で読み取り専用表示になる（submit 値には含まれる） */
+  readonly?: boolean;
 }
 
 export interface TextField extends FieldBase {
@@ -39,8 +40,8 @@ export interface SelectField extends FieldBase {
 export interface EntityField extends FieldBase {
   type: "entity";
   entityType: EntityType;
-  /** 選択肢を絞り込むフィルタ */
-  filter?: Record<string, unknown>;
+  /** 選択肢を絞り込むフィルタ関数 */
+  filter?: (entity: FlowEntity) => boolean;
   /** 表示ラベルに使うフィールド名（デフォルト: "name"） */
   labelField?: string;
 }
