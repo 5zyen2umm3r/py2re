@@ -265,6 +265,7 @@ export function TaskSchedule() {
           columns={columns}
           rows={[assetRowDef]}
           entities={entities}
+          stickyRowHeader
         />
       </Box>
 
