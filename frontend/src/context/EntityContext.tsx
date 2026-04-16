@@ -204,11 +204,27 @@ function reducer(store: EntityStore, action: Action): EntityStore {
       const entries = store.past[store.past.length - 1];
       let newState = store.state;
       for (const e of entries) newState = applyHistory(newState, e, "undo");
+
+      // UNDO した操作に対応する pendingDiffs を除去する
+      // 同一エントリが複数回 update されている場合は最後の1件だけ除去する
+      let newPendingDiffs = [...store.pendingDiffs];
+      for (const e of entries) {
+        // 末尾から検索して最初に見つかった1件を除去
+        for (let i = newPendingDiffs.length - 1; i >= 0; i--) {
+          const d = newPendingDiffs[i];
+          if (d.type === e.type && String(d.id) === String(e.id)) {
+            newPendingDiffs.splice(i, 1);
+            break;
+          }
+        }
+      }
+
       return {
         ...store,
         state: newState,
         past: store.past.slice(0, -1),
         future: [entries, ...store.future],
+        pendingDiffs: newPendingDiffs,
       };
     }
     case "UNDO_ALL": {
@@ -223,6 +239,7 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         state: newState,
         past: [],
         future: [...allPast.reverse(), ...store.future],
+        pendingDiffs: [],
       };
     }
     case "REDO": {
@@ -230,11 +247,21 @@ function reducer(store: EntityStore, action: Action): EntityStore {
       const entries = store.future[0];
       let newState = store.state;
       for (const e of entries) newState = applyHistory(newState, e, "redo");
+
+      // REDO した操作を pendingDiffs に再追加する
+      const redoDiffs = entries.map((e) => ({
+        type: e.type,
+        id: e.id,
+        patch: e.after ?? {},
+        action: e.before === undefined ? "create" : e.after === undefined ? "delete" : "update",
+      }));
+
       return {
         ...store,
         state: newState,
         past: [...store.past, entries],
         future: store.future.slice(1),
+        pendingDiffs: [...store.pendingDiffs, ...redoDiffs],
       };
     }
     case "REDO_ALL": {
@@ -244,11 +271,20 @@ function reducer(store: EntityStore, action: Action): EntityStore {
       for (const group of allFuture) {
         for (const e of group) newState = applyHistory(newState, e, "redo");
       }
+
+      const redoDiffs = allFuture.flat().map((e) => ({
+        type: e.type,
+        id: e.id,
+        patch: e.after ?? {},
+        action: e.before === undefined ? "create" : e.after === undefined ? "delete" : "update",
+      }));
+
       return {
         ...store,
         state: newState,
         past: [...store.past, ...allFuture],
         future: [],
+        pendingDiffs: [...store.pendingDiffs, ...redoDiffs],
       };
     }
     case "CLEAR_PENDING":
@@ -319,6 +355,7 @@ interface EntityContextValue {
   /** 全エンティティタイプを Record<EntityType, FlowEntity[]> で返す */
   getAll: () => Record<EntityType, FlowEntity[]>;
   pastEntries: HistoryEntry[][];
+  futureEntries: HistoryEntry[][];
 }
 
 const EntityContext = createContext<EntityContextValue | null>(null);
@@ -509,6 +546,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       getList,
       getAll,
       pastEntries: store.past,
+      futureEntries: store.future,
     }),
     [
       store,
