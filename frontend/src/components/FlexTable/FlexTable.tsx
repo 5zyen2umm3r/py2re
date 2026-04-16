@@ -665,11 +665,12 @@ interface RowRendererProps {
   onStartEdit: (rowKey: string, colIndex: number, currentValue: unknown) => void;
   onCommitEdit: (rowChain: unknown[], colChain: unknown[], currentValue: unknown, inputValue: unknown, cellDef: CellDef | null) => void;
   onCancelEdit: () => void;
+  stickyRowHeader?: boolean;
 }
 
 function RowRenderer({
   node, colChains, columns, entities, openKeys, onToggle, onContextMenu, onBarContextMenu, totalDepth,
-  editingCell, onStartEdit, onCommitEdit, onCancelEdit,
+  editingCell, onStartEdit, onCommitEdit, onCancelEdit, stickyRowHeader = false,
 }: RowRendererProps) {
   const { rowKey, chain, depth, hasChildren, rowDef, isSubRow, cellDef } = node;
   const isOpen = openKeys.has(rowKey);
@@ -699,6 +700,7 @@ function RowRenderer({
             py: 0.25,
             px: 1,
             letterSpacing: '0.05em',
+            ...(stickyRowHeader ? { position: 'sticky', left: 0, zIndex: 1 } : {}),
           }}
         >
           {String(rowVal ?? '')}
@@ -732,6 +734,7 @@ function RowRenderer({
             width: '1%',
             py: 0.25,
             pl: 4,
+            ...(stickyRowHeader ? { position: 'sticky', left: 0, zIndex: 1, backgroundColor: 'background.paper' } : {}),
           }}
         >
           (EOF)
@@ -783,7 +786,19 @@ function RowRenderer({
       >
         <TableCell
           ref={headerCellRef}
-          style={{ ...rowStyle, paddingLeft: 8 + depth * 20, whiteSpace: "nowrap", width: "1%", verticalAlign: 'middle' }}
+          style={{
+            ...rowStyle,
+            paddingLeft: 8 + depth * 20,
+            whiteSpace: "nowrap",
+            width: "1%",
+            verticalAlign: 'middle',
+            ...(stickyRowHeader ? {
+              position: 'sticky',
+              left: 0,
+              zIndex: 1,
+              backgroundColor: 'var(--mui-palette-background-paper, #fff)',
+            } : {}),
+          }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             {hasChildren ? (
@@ -884,6 +899,7 @@ function RowRenderer({
           onStartEdit={onStartEdit}
           onCommitEdit={onCommitEdit}
           onCancelEdit={onCancelEdit}
+          stickyRowHeader={stickyRowHeader}
         />
       ))}
     </>
@@ -951,7 +967,7 @@ function ContextMenuItemRenderer({ item, params, onClose }: ContextMenuItemRende
 
 // ---- メインコンポーネント ----
 
-export function FlexTable({ layout = "stacked", columns, rows, entities, stickyHeader = true }: FlexTableProps) {
+export function FlexTable({ layout = "stacked", columns, rows, entities, stickyHeader = true, stickyRowHeader = false }: FlexTableProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
   const [ctx, setCtx] = useState<CtxState | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -1022,7 +1038,12 @@ export function FlexTable({ layout = "stacked", columns, rows, entities, stickyH
         <Table size="small" stickyHeader={stickyHeader}>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: '1%', whiteSpace: 'nowrap' }} />
+              {/* 左上の交差セル: stickyHeader + stickyRowHeader が両方有効な場合は z-index を上げる */}
+              <TableCell sx={{
+                width: '1%',
+                whiteSpace: 'nowrap',
+                ...(stickyRowHeader ? { position: 'sticky', left: 0, zIndex: stickyHeader ? 4 : 2, backgroundColor: 'background.paper' } : {}),
+              }} />
               {colChains.map((chain, ci) => {
                 const colDef = columns[0];
                 const display = colDef.display ?? ((v) => String(v ?? ""));
@@ -1060,6 +1081,7 @@ export function FlexTable({ layout = "stacked", columns, rows, entities, stickyH
                 onStartEdit={handleStartEdit}
                 onCommitEdit={handleCommitEdit}
                 onCancelEdit={handleCancelEdit}
+                stickyRowHeader={stickyRowHeader}
               />
             ))}
           </TableBody>

@@ -126,4 +126,6 @@ export interface FlexTableProps {
   entities: Record<EntityType, FlowEntity[]>;
   /** 列ヘッダを縦スクロール時に固定するか（デフォルト: true） */
   stickyHeader?: boolean;
+  /** 行ヘッダを横スクロール時に固定するか（デフォルト: false） */
+  stickyRowHeader?: boolean;
 }
