@@ -339,6 +339,7 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         pendingDiffs: newPendingDiffs,
       };
     }
+    case "CLEAR_PENDING":
       return { ...store, pendingDiffs: [] };
     case "CLEAR_ALL_HISTORY":
       return { ...store, past: [], future: [], pendingDiffs: [] };

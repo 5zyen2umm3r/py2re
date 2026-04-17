@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import shotgun_api3
+from django.db import transaction
 
 from .models import CachedEntity, CachedProject, EntityHistory, SyncState
 
@@ -484,7 +485,17 @@ def _process_create_diffs_with_deps(
                 next_pending.append(diff)
                 continue
 
-            # 解決可能 → 処理する
+            # 解決可能 → 処理する（select_for_update で二重処理を防ぐ）
+            from .models import EntityDiff as _EntityDiff
+            with transaction.atomic():
+                try:
+                    locked_diff = _EntityDiff.objects.select_for_update().get(
+                        id=diff.id, action="create"
+                    )
+                except _EntityDiff.DoesNotExist:
+                    # 既に別プロセスで処理済み → スキップ
+                    continue
+
             entity_cfg = config["entities"].get(diff.entity_type, {})
             sg_type = entity_cfg.get("type", diff.entity_type)
             datetime_fields = _get_datetime_fields(diff.entity_type, config)
