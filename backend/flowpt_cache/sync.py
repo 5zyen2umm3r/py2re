@@ -209,17 +209,62 @@ def sync_projects(sg: shotgun_api3.Shotgun, full: bool = False, project_ids: lis
     }
     stats = {"created": 0, "updated": 0, "deleted": 0, "mode": "full" if full else "incremental"}
 
+    # ---- 削除検出 ----
+    # full=True: ローカルに存在してremoteに存在しないものを削除
+    # full=False: retired_only=True で updated_at > last_synced なものを取得して削除
     if full:
-        # 削除検出のスコープ: project_ids 指定時はその範囲のみ
         local_qs = CachedProject.objects.all()
         if project_ids is not None:
             local_qs = local_qs.filter(flowpt_id__in=project_ids)
         local_ids = set(local_qs.values_list("flowpt_id", flat=True))
+
+        # retired エンティティも取得してローカルから削除
+        retired_filters = list(entity_cfg.get("filters", []))
+        if project_ids is not None:
+            retired_filters.append(["id", "in", project_ids])
+        try:
+            retired_ids = {
+                e["id"] for e in sg.find("Project", retired_filters, ["id"], retired_only=True)
+            }
+        except Exception:
+            retired_ids = set()
+
         for fid in local_ids - set(remote_map.keys()):
             local = CachedProject.objects.get(flowpt_id=fid)
             _record_history(entity_type, fid, local.data, None, "deleted", max_gen)
             local.delete()
             stats["deleted"] += 1
+
+        # retired エンティティがローカルに残っている場合も削除
+        for fid in retired_ids:
+            if fid not in local_ids:
+                continue
+            if fid in remote_map:
+                continue  # 通常取得にも含まれている場合はスキップ
+            try:
+                local = CachedProject.objects.get(flowpt_id=fid)
+                _record_history(entity_type, fid, local.data, None, "deleted", max_gen)
+                local.delete()
+                stats["deleted"] += 1
+            except CachedProject.DoesNotExist:
+                pass
+    else:
+        # インクリメンタル: updated_at > last_synced な retired エンティティを削除
+        if last_synced is not None:
+            retired_filters = list(entity_cfg.get("filters", []))
+            if project_ids is not None:
+                retired_filters.append(["id", "in", project_ids])
+            retired_filters.append(["updated_at", "greater_than", last_synced])
+            retired_remote = sg.find("Project", retired_filters, ["id"], retired_only=True)
+            for e in retired_remote:
+                fid = e["id"]
+                try:
+                    local = CachedProject.objects.get(flowpt_id=fid)
+                    _record_history(entity_type, fid, local.data, None, "deleted", max_gen)
+                    local.delete()
+                    stats["deleted"] += 1
+                except CachedProject.DoesNotExist:
+                    pass
 
     for fid, remote_data in remote_map.items():
         obj, created = CachedProject.objects.get_or_create(
@@ -303,6 +348,23 @@ def sync_entity_type(
 
     stats = {"created": 0, "updated": 0, "deleted": 0, "mode": "full" if full else "incremental"}
 
+    # ---- インクリメンタル削除検出 ----
+    # full=False の場合でも、updated_at > last_synced な retired エンティティを削除する
+    if not full and last_synced is not None:
+        retired_filters = _build_filters(entity_cfg, last_synced, False, project_ids)
+        try:
+            retired_remote = sg.find(sg_type, retired_filters, ["id"], retired_only=True)
+            for e in retired_remote:
+                fid = e["id"]
+                if fid in local_map:
+                    local = local_map[fid]
+                    _record_history(entity_type, fid, local.data, None, "deleted", max_gen)
+                    local.delete()
+                    stats["deleted"] += 1
+                    del local_map[fid]
+        except Exception:
+            pass  # retired_only 非対応の場合は無視
+
     for fid, remote_data in remote_map.items():
         project_obj = _resolve_project(entity_cfg, remote_data)
         if fid in local_map:
@@ -330,10 +392,19 @@ def sync_entity_type(
             )
             stats["created"] += 1
 
-    # 削除検出はフル取得時のみ
+    # 削除検出はフル取得時のみ（retired エンティティも含む）
     if full:
-        for fid, local in local_map.items():
-            if fid not in remote_map:
+        # retired_only=True で retired エンティティのIDも取得し、local_map に残っていれば削除
+        try:
+            retired_filters = _build_filters(entity_cfg, None, True, project_ids)
+            retired_ids = {
+                e["id"] for e in sg.find(sg_type, retired_filters, ["id"], retired_only=True)
+            }
+        except Exception:
+            retired_ids = set()
+
+        for fid, local in list(local_map.items()):
+            if fid not in remote_map or fid in retired_ids:
                 _record_history(entity_type, fid, local.data, None, "deleted", max_gen)
                 local.delete()
                 stats["deleted"] += 1
