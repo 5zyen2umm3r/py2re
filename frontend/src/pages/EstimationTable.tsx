@@ -323,6 +323,7 @@ export function EstimationTable() {
           columns={columns as ColumnDef[]}
           rows={[rowUsers as RowDef, rowAssets as RowDef]}
           entities={allEntities}
+          stickyRowHeader
         />
       </Box>
 
