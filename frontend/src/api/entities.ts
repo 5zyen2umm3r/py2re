@@ -43,6 +43,10 @@ export const entityApi = {
   delete: (type: EntityType, id: number) =>
     apiFetch<void>(`${BASE}/${type}/${id}/`, { method: "DELETE" }),
 
+  /** _new_xxx 形式の文字列IDを持つ Django-only エンティティ（未FlowPT登録）を削除する */
+  deleteByStringId: (type: EntityType, id: string) =>
+    apiFetch<void>(`${BASE}/${type}/${id}/`, { method: "DELETE" }),
+
   sync: (type: EntityType | "all" = "all") =>
     apiFetch<Record<string, unknown>>(`${BASE}/${type}/sync/`, { method: "POST" }),
 

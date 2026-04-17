@@ -182,16 +182,33 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         before,
         after: undefined,
       };
-      // 仮IDのエンティティ削除はpendingDiffsのcreateを取り消す
+      // 仮IDのエンティティ削除:
+      // - pendingDiffs に create diff がある場合はキャンセル（Django 未登録）
+      // - create diff がない場合は delete diff を積む（Django 登録済みだが FlowPT 未登録）
       const isTemp = typeof action.id === "string" && String(action.id).startsWith("_new_");
-      const newPendingDiffs = isTemp
-        ? store.pendingDiffs.filter(
+      let newPendingDiffs;
+      if (isTemp) {
+        const hasPendingCreate = store.pendingDiffs.some(
+          (d) => d.type === action.entityType && d.id === action.id && d.action === "create"
+        );
+        if (hasPendingCreate) {
+          // まだ commit していない create → キャンセルするだけ
+          newPendingDiffs = store.pendingDiffs.filter(
             (d) => !(d.type === action.entityType && d.id === action.id && d.action === "create")
-          )
-        : [
+          );
+        } else {
+          // Django に登録済み（commit 後にリロードされた _new_ ID）→ delete diff を積む
+          newPendingDiffs = [
             ...store.pendingDiffs,
             { type: action.entityType, id: action.id, patch: {}, action: "delete" },
           ];
+        }
+      } else {
+        newPendingDiffs = [
+          ...store.pendingDiffs,
+          { type: action.entityType, id: action.id, patch: {}, action: "delete" },
+        ];
+      }
       return {
         ...store,
         state: { ...store.state, [action.entityType]: map },
@@ -461,8 +478,13 @@ export function EntityProvider({ children }: { children: ReactNode }) {
           await entityApi.create(type, cleanPatch);
         } else if (d.action === "update" && typeof d.id === "number") {
           await entityApi.update(type, d.id, cleanPatch);
-        } else if (d.action === "delete" && typeof d.id === "number") {
-          await entityApi.delete(type, d.id);
+        } else if (d.action === "delete") {
+          if (typeof d.id === "number") {
+            await entityApi.delete(type, d.id);
+          } else if (typeof d.id === "string" && d.id.startsWith("_new_")) {
+            // Django に登録済みだが FlowPT ID がない create diff レコードを削除する
+            await entityApi.deleteByStringId(type, d.id);
+          }
         }
       }
       dispatch({ kind: "CLEAR_PENDING" });
@@ -485,8 +507,12 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         await entityApi.create(d.type, cleanPatch);
       } else if (d.action === "update" && typeof d.id === "number") {
         await entityApi.update(d.type, d.id, cleanPatch);
-      } else if (d.action === "delete" && typeof d.id === "number") {
-        await entityApi.delete(d.type, d.id);
+      } else if (d.action === "delete") {
+        if (typeof d.id === "number") {
+          await entityApi.delete(d.type, d.id);
+        } else if (typeof d.id === "string" && d.id.startsWith("_new_")) {
+          await entityApi.deleteByStringId(d.type, d.id);
+        }
       }
     }
     // commit 後は履歴・pending をすべてクリアして状態を Fix する
