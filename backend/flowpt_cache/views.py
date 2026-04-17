@@ -112,7 +112,26 @@ class EntityViewSet(viewsets.ViewSet):
         return Response(EntityDiffSerializer(diff).data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, entity_type=None, pk=None):
-        # pk が "_new_<diff_id>" 形式の場合は create diff をマージ更新する
+        # pk が int の場合は通常の update diff
+        # URL /_new_<int>/ から来た場合は pk が int で渡されるが
+        # request.resolver_match.url_name で temp ルートか判定する
+        is_temp_route = (
+            request.resolver_match.url_name == "entity-temp-detail"
+            if hasattr(request, "resolver_match") and request.resolver_match
+            else False
+        )
+        if is_temp_route:
+            # _new_<pk> 形式として処理
+            temp_id = f"_new_{pk}"
+            try:
+                orig_diff = EntityDiff.objects.get(id=pk, action="create", entity_type=entity_type)
+                merged_patch = {**orig_diff.patch, **request.data}
+                orig_diff.patch = merged_patch
+                orig_diff.save(update_fields=["patch"])
+                return Response(EntityDiffSerializer(orig_diff).data)
+            except (EntityDiff.DoesNotExist, ValueError):
+                return Response({"error": "create diff not found"}, status=status.HTTP_404_NOT_FOUND)
+
         pk_str = str(pk)
         if pk_str.startswith("_new_"):
             try:
@@ -134,6 +153,19 @@ class EntityViewSet(viewsets.ViewSet):
         return Response(EntityDiffSerializer(diff).data)
 
     def destroy(self, request, entity_type=None, pk=None):
+        is_temp_route = (
+            request.resolver_match.url_name == "entity-temp-detail"
+            if hasattr(request, "resolver_match") and request.resolver_match
+            else False
+        )
+        if is_temp_route:
+            # _new_<pk> として EntityDiff レコードを削除
+            try:
+                EntityDiff.objects.filter(id=pk, action="create", entity_type=entity_type).delete()
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            except ValueError:
+                return Response({"error": "invalid id"}, status=status.HTTP_400_BAD_REQUEST)
+
         pk_str = str(pk)
         if pk_str.startswith("_new_"):
             try:
