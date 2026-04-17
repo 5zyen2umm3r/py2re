@@ -30,4 +30,5 @@ urlpatterns = [
     path("entities/<str:entity_type>/sync/", entity_sync, name="entity-sync"),
     path("entities/<str:entity_type>/commit/", entity_commit, name="entity-commit"),
     path("entities/all/sync/", entity_sync, {"entity_type": "all"}, name="entity-sync-all"),
+    path("entities/all/commit/", entity_commit, {"entity_type": "all"}, name="entity-commit-all"),
 ]

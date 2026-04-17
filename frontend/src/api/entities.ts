@@ -53,8 +53,8 @@ export const entityApi = {
   sync: (type: EntityType | "all" = "all") =>
     apiFetch<Record<string, unknown>>(`${BASE}/${type}/sync/`, { method: "POST" }),
 
-  commit: (type: EntityType, diffIds?: number[]) =>
-    apiFetch<{ status: string }>(`${BASE}/${type}/commit/`, {
+  commit: (diffIds?: number[]) =>
+    apiFetch<{ status: string }>(`${BASE}/all/commit/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ diff_ids: diffIds }),
