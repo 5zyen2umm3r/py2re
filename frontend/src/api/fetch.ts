@@ -53,6 +53,14 @@ export async function apiFetch<T = unknown>(
 
   const res = await fetch(path, options);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  // 204 No Content など body が空のレスポンスは JSON パースしない
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as unknown as T;
+  }
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return undefined as unknown as T;
+  }
   return res.json() as Promise<T>;
 }
 
