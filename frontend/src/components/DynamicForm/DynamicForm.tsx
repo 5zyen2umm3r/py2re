@@ -8,6 +8,7 @@ import { useForm, Controller } from "react-hook-form";
 import type { Control } from "react-hook-form";import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField as MuiTextField, MenuItem, Typography, Stack,
+  InputLabel, FormControl, Select, OutlinedInput, Chip, Box,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -139,6 +140,50 @@ function FieldRenderer({
       );
     }
 
+    case "multi_entity": {
+      const entityList = getList(field.entityType);
+      const labelField = field.labelField ?? "name";
+      const filteredList = field.filter ? entityList.filter(field.filter) : entityList;
+      const optionMap = new Map(filteredList.map((e) => [e.id, String(e[labelField] ?? e.id)]));
+      return (
+        <Controller
+          name={field.name}
+          control={control}
+          rules={{ required: field.required }}
+          render={({ field: f, fieldState }) => {
+            const selectedIds: number[] = Array.isArray(f.value) ? f.value : [];
+            return (
+              <FormControl size="small" fullWidth error={!!fieldState.error}>
+                <InputLabel>{field.label}</InputLabel>
+                <Select
+                  multiple
+                  value={selectedIds}
+                  onChange={(e) => f.onChange(e.target.value)}
+                  input={<OutlinedInput label={field.label} />}
+                  renderValue={(selected) => (
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {(selected as number[]).map((id) => (
+                        <Chip key={id} label={optionMap.get(id) ?? id} size="small" />
+                      ))}
+                    </Box>
+                  )}
+                >
+                  {filteredList.map((e) => (
+                    <MenuItem key={e.id} value={e.id}>
+                      {String(e[labelField] ?? e.id)}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {fieldState.error && (
+                  <Typography variant="caption" color="error">{fieldState.error.message}</Typography>
+                )}
+              </FormControl>
+            );
+          }}
+        />
+      );
+    }
+
     case "date":
       return (
         <Controller
@@ -224,7 +269,7 @@ export function DynamicForm({ title, fields, defaultValues, open, onClose, onSub
 
   const handleClose = () => { reset(); onClose(); };
 
-  // entity フィールドの値（ID）を { type, id } 参照オブジェクトに変換してから onSubmit へ渡す
+  // entity / multi_entity フィールドの値（ID）を { type, id } 参照オブジェクトに変換してから onSubmit へ渡す
   const handleFormSubmit = (rawValues: Record<string, unknown>) => {
     const converted: Record<string, unknown> = { ...rawValues };
     for (const field of fields) {
@@ -234,6 +279,13 @@ export function DynamicForm({ title, fields, defaultValues, open, onClose, onSub
           converted[field.name] = { type: field.entityType, id };
         } else {
           converted[field.name] = undefined;
+        }
+      } else if (field.type === "multi_entity") {
+        const ids = rawValues[field.name];
+        if (Array.isArray(ids)) {
+          converted[field.name] = ids.map((id) => ({ type: field.entityType, id }));
+        } else {
+          converted[field.name] = [];
         }
       }
     }

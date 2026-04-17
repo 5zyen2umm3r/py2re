@@ -5,6 +5,7 @@ export type {
   NumberField,
   SelectField,
   EntityField,
+  MultiEntityField,
   DateField,
   ReadonlyField,
 } from "../../types/fieldDef";
