@@ -383,6 +383,8 @@ export interface PendingDiffSummary {
   action: string;
   /** 変更フィールドのキー一覧（update の場合） */
   fields: string[];
+  /** エンティティの表示名（name または code、解決できない場合は undefined） */
+  label?: string;
 }
 
 interface EntityContextValue {
@@ -395,7 +397,7 @@ interface EntityContextValue {
   loadAll: () => Promise<void>;
   load: (type: EntityType) => Promise<void>;
   patch: (type: EntityType, id: number | string, data: Partial<FlowEntity>) => void;
-  create: (type: EntityType, data: Partial<FlowEntity>) => Promise<void>;
+  create: (type: EntityType, data: Partial<FlowEntity>) => void;
   remove: (type: EntityType, id: number | string) => void;
   undo: () => void;
   undoAll: () => void;
@@ -475,32 +477,10 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   );
 
   const create = useCallback(
-    async (type: EntityType, data: Partial<FlowEntity>) => {
-      // まずフロントエンド側に仮IDでエンティティを作成して即時反映
+    (type: EntityType, data: Partial<FlowEntity>) => {
       const tempId = `_new_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const entity: FlowEntity = { id: tempId as unknown as number, type, ...data };
       dispatch({ kind: "CREATE", entityType: type, entity, tempId });
-
-      // Django に POST して EntityDiff.id を取得し、確定仮IDに置換する
-      try {
-        const cleanData = Object.fromEntries(
-          Object.entries(data).filter(
-            ([k, v]) =>
-              k !== "_diff_id" &&
-              k !== "id" &&
-              !(typeof v === "string" && v.startsWith("_new_"))
-          )
-        ) as Partial<FlowEntity>;
-        const resp = await entityApi.create(type, cleanData);
-        // レスポンス: { id: "_new_42", _diff_id: 42, ... }
-        const djangoId = String(resp.id); // "_new_42"
-        if (djangoId !== tempId && djangoId.startsWith("_new_")) {
-          const newEntity: FlowEntity = { ...entity, id: djangoId as unknown as number };
-          dispatch({ kind: "REPLACE_TEMP_ID", entityType: type, oldId: tempId, newId: djangoId, newEntity });
-        }
-      } catch (e) {
-        console.error("create failed:", e);
-      }
     },
     [],
   );
@@ -522,8 +502,19 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   const commit = useCallback(
     async (type: EntityType) => {
       const diffs = store.pendingDiffs.filter((d) => d.type === type);
+
+      // create と delete が同一仮IDで対になっている場合は相殺してスキップ
+      const cancelledIds = new Set<string>();
       for (const d of diffs) {
-        // _diff_id・仮ID・内部フィールドを除去したクリーンなpatchを作る
+        if (d.action === "delete" && typeof d.id === "string" && d.id.startsWith("_new_")) {
+          const hasCreate = diffs.some((c) => c.action === "create" && String(c.id) === d.id);
+          if (hasCreate) cancelledIds.add(d.id);
+        }
+      }
+
+      for (const d of diffs) {
+        if (typeof d.id === "string" && cancelledIds.has(d.id)) continue;
+
         const cleanPatch = Object.fromEntries(
           Object.entries(d.patch).filter(
             ([k, v]) =>
@@ -534,15 +525,11 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         ) as Partial<FlowEntity>;
 
         if (d.action === "create") {
-          // no-op: already sent to Django on create
+          await entityApi.create(type, cleanPatch);
         } else if (d.action === "update" && typeof d.id === "number") {
           await entityApi.update(type, d.id, cleanPatch);
-        } else if (d.action === "delete") {
-          if (typeof d.id === "number") {
-            await entityApi.delete(type, d.id);
-          } else if (typeof d.id === "string" && d.id.startsWith("_new_")) {
-            await entityApi.deleteByStringId(type, d.id);
-          }
+        } else if (d.action === "delete" && typeof d.id === "number") {
+          await entityApi.delete(type, d.id);
         }
       }
       dispatch({ kind: "CLEAR_PENDING" });
@@ -551,7 +538,18 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   );
 
   const commitAll = useCallback(async () => {
+    // create と delete が同一仮IDで対になっている場合は相殺してスキップ
+    const cancelledIds = new Set<string>();
     for (const d of store.pendingDiffs) {
+      if (d.action === "delete" && typeof d.id === "string" && d.id.startsWith("_new_")) {
+        const hasCreate = store.pendingDiffs.some((c) => c.action === "create" && String(c.id) === d.id);
+        if (hasCreate) cancelledIds.add(d.id);
+      }
+    }
+
+    for (const d of store.pendingDiffs) {
+      if (typeof d.id === "string" && cancelledIds.has(d.id)) continue;
+
       const cleanPatch = Object.fromEntries(
         Object.entries(d.patch).filter(
           ([k, v]) =>
@@ -561,17 +559,12 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         )
       ) as Partial<FlowEntity>;
 
-      // create は既に Django 登録済み（create 時に POST 済み）のためスキップ
       if (d.action === "create") {
-        // no-op: already sent to Django on create
+        await entityApi.create(d.type, cleanPatch);
       } else if (d.action === "update" && typeof d.id === "number") {
         await entityApi.update(d.type, d.id, cleanPatch);
-      } else if (d.action === "delete") {
-        if (typeof d.id === "number") {
-          await entityApi.delete(d.type, d.id);
-        } else if (typeof d.id === "string" && d.id.startsWith("_new_")) {
-          await entityApi.deleteByStringId(d.type, d.id);
-        }
+      } else if (d.action === "delete" && typeof d.id === "number") {
+        await entityApi.delete(d.type, d.id);
       }
     }
     dispatch({ kind: "CLEAR_ALL_HISTORY" });
@@ -583,13 +576,32 @@ export function EntityProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getPendingSummary = useCallback((): PendingDiffSummary[] => {
-    return store.pendingDiffs.map((d) => ({
-      type: d.type,
-      id: d.id,
-      action: d.action,
-      fields: d.action === "update" ? Object.keys(d.patch) : [],
-    }));
-  }, [store.pendingDiffs]);
+    return store.pendingDiffs.map((d) => {
+      // state からエンティティを参照して name または code を取得
+      let label: string | undefined;
+      if (d.id !== null) {
+        const entity = store.state[d.type]?.[d.id as number | string];
+        if (entity) {
+          label = (entity.name as string | undefined)
+            ?? (entity.code as string | undefined)
+            ?? undefined;
+        }
+        // create の場合は patch から取得
+        if (!label && d.action === "create") {
+          label = (d.patch.name as string | undefined)
+            ?? (d.patch.code as string | undefined)
+            ?? undefined;
+        }
+      }
+      return {
+        type: d.type,
+        id: d.id,
+        action: d.action,
+        fields: d.action === "update" ? Object.keys(d.patch) : [],
+        label,
+      };
+    });
+  }, [store.pendingDiffs, store.state]);
 
   const resolve = useCallback(
     (ref: { type: EntityType; id: number } | null | undefined) => {

@@ -315,7 +315,7 @@ function AppContent() {
               {summary.map((s, i) => (
                 <ListItem key={i} disableGutters>
                   <ListItemText
-                    primary={`[${actionLabel(s.action)}] ${s.type} (ID: ${s.id ?? "新規"})`}
+                    primary={`[${actionLabel(s.action)}] ${s.type} — ${s.label ?? (s.id != null ? `ID: ${s.id}` : "新規")}`}
                     secondary={s.fields.length > 0 ? `変更フィールド: ${s.fields.join(", ")}` : undefined}
                   />
                 </ListItem>
