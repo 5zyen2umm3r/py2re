@@ -69,20 +69,6 @@ export function EstimationTable() {
   );
 
   
-  const estimationFields : FieldDef[] = [
-    { name: "project",  label: "Project", type: "entity", entityType: "Project", readonly: true },
-    { name: "sg_asset", label: "Asset",   type: "entity", entityType: "Asset",   readonly: true },
-    { name: "sg_user", label: "Assign To", type: "entity", entityType: "HumanUser", required: true },
-    { name: "sg_month", label: "月", type: "date", required: true },
-    {
-      name: "sg_man_months", label: "工数（人月）", type: "number", required: true,
-      min: 0, step: 0.1,
-      helperText: `1人月 = ${HOURS_PER_MONTH}h`,
-      toDisplay: (h: number) => Math.round((h / HOURS_PER_MONTH) * 100) / 100,
-      fromDisplay: (mm: number) => mm * HOURS_PER_MONTH,
-    },
-  ];
-
   // ---- 列定義 ----
   const columns: ColumnDef<Date>[] = [{
     value: () => MONTHS,
@@ -176,7 +162,7 @@ export function EstimationTable() {
               if (!est) return;
               openForm({
                 title: "Estimationを編集",
-                fields: estimationFields,
+                fields: EstimationFields,
                 defaultValues: {
                   project:      (est.project   as FlowEntity)?.id,
                   sg_asset:     (est.sg_asset   as FlowEntity)?.id,

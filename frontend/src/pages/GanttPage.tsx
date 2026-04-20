@@ -152,12 +152,7 @@ export function GanttPage() {
           action: ({ entity }: { entity: FlowEntity; rowChain: unknown[] }) => {
             openForm({
               title: 'タスクを編集',
-              fields: [
-                { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
-                { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
-                { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
-                { name: 'task_assignees', label: '担当ユーザ', type: 'multi_entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false },
-              ],
+              fields: TaskFields,
               defaultValues: {
                 content: entity['content'],
                 start_date: entity['start_date'],
