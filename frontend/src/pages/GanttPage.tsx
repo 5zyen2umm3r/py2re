@@ -96,7 +96,7 @@ export function GanttPage() {
         end: dateToBarPosition(dueDate, timeCols, granularity),
       };
     },
-    label: (task) => String(task['content'] ?? ''),
+    labelOuterLeft: (task) => String(task['content'] ?? ''),
     labelStart: (task) => {
       const s = task['start_date'] as string | null | undefined;
       if (!s) return null;
