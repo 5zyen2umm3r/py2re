@@ -219,6 +219,14 @@ export function SettingsPage(): JSX.Element {
           className="visually-hidden"
           onChange={handleFileChange}
         />
+        <Button
+          variant="outlined"
+          color="warning"
+          startIcon={<DeleteSweepIcon />}
+          onClick={() => setClearDialogOpen(true)}
+        >
+          全設定をクリア
+        </Button>
       </Stack>
 
       {importError && (
@@ -229,23 +237,6 @@ export function SettingsPage(): JSX.Element {
 
       <Divider sx={{ my: 3 }} />
 
-      {/* 全設定クリア */}
-      <Paper variant="outlined" sx={{ p: 2, borderColor: 'warning.main' }}>
-        <Typography variant="subtitle1" gutterBottom color="warning.main">
-          危険な操作
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          すべての設定・フィルタ・粒度設定を初期値にリセットします。
-        </Typography>
-        <Button
-          variant="outlined"
-          color="warning"
-          startIcon={<DeleteSweepIcon />}
-          onClick={() => setClearDialogOpen(true)}
-        >
-          全設定をクリア
-        </Button>
-      </Paper>
 
       {/* 確認ダイアログ */}
       <Dialog open={clearDialogOpen} onClose={() => setClearDialogOpen(false)} maxWidth="xs" fullWidth>

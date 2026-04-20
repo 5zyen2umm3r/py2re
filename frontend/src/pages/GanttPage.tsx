@@ -107,6 +107,7 @@ export function GanttPage() {
     },
     labelOuterLeft: (task) => String(task['content'] ?? ''),
     label: () => '',
+    /*
     labelStart: (task) => {
       const s = task['start_date'] as string | null | undefined;
       if (!s) return null;
@@ -119,6 +120,7 @@ export function GanttPage() {
       const d = parseDateLocal(s);
       return `${d.getMonth() + 1}/${d.getDate()}`;
     },
+    */
     labelOuterRight: (task) => {
       const assignees = task['task_assignees'] as { name?: string }[] | undefined;
       if (!Array.isArray(assignees) || assignees.length === 0) return null;
