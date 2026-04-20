@@ -313,16 +313,18 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
         </span>
       )}
       {/* 中央ラベル */}
-      <span style={{
-        flex: 1, textAlign: 'center',
-        paddingLeft: barDef.labelStart ? 48 : 4,
-        paddingRight: barDef.labelEnd ? 48 : 4,
-        fontSize: '0.75rem', color: '#fff',
-        overflow: 'hidden', whiteSpace: 'nowrap',
-        pointerEvents: 'none', zIndex: 3, position: 'relative',
-      }}>
-        {barDef.label(entity)}
-      </span>
+      {barDef.label && (
+        <span style={{
+          flex: 1, textAlign: 'center',
+          paddingLeft: barDef.labelStart ? 48 : 4,
+          paddingRight: barDef.labelEnd ? 48 : 4,
+          fontSize: '0.75rem', color: '#fff',
+          overflow: 'hidden', whiteSpace: 'nowrap',
+          pointerEvents: 'none', zIndex: 3, position: 'relative',
+        }}>
+          {barDef.label(entity)}
+        </span>
+      )}
       {/* 右端ラベル */}
       {barDef.labelEnd && (
         <span style={{

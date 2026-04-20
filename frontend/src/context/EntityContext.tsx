@@ -54,6 +54,7 @@ type Action =
   | { kind: "REDO_ALL" }
   | { kind: "CLEAR_PENDING" }
   | { kind: "CLEAR_ALL_HISTORY" }
+  | { kind: "CLEAR_ALL" }
   | { kind: "RESTORE"; store: Pick<EntityStore, "state" | "past" | "future"> }
   /** LOAD 完了後に past の最新 after を state にマージして履歴を反映する */
   | { kind: "APPLY_PAST_TO_STATE" };
@@ -343,6 +344,8 @@ function reducer(store: EntityStore, action: Action): EntityStore {
       return { ...store, pendingDiffs: [] };
     case "CLEAR_ALL_HISTORY":
       return { ...store, past: [], future: [], pendingDiffs: [] };
+    case "CLEAR_ALL":
+      return { state: emptyState(), past: [], future: [], pendingDiffs: [] };
     case "RESTORE":
       return { ...store, state: action.store.state, past: action.store.past, future: action.store.future };
     case "APPLY_PAST_TO_STATE": {
@@ -399,6 +402,7 @@ interface EntityContextValue {
   redoAll: () => void;
   commit: (type: EntityType) => Promise<void>;
   commitAll: () => Promise<void>;
+  clearAll: () => void;
   getPendingSummary: () => PendingDiffSummary[];
   resolve: (
     ref: { type: EntityType; id: number } | null | undefined,
@@ -572,6 +576,11 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     dispatch({ kind: "CLEAR_ALL_HISTORY" });
   }, [store.pendingDiffs]);
 
+  const clearAll = useCallback(() => {
+    try { localStorage.removeItem(LS_HISTORY_KEY); } catch { /* ignore */ }
+    dispatch({ kind: "CLEAR_ALL" });
+  }, []);
+
   const getPendingSummary = useCallback((): PendingDiffSummary[] => {
     return store.pendingDiffs.map((d) => ({
       type: d.type,
@@ -621,6 +630,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       redoAll,
       commit,
       commitAll,
+      clearAll,
       getPendingSummary,
       resolve,
       getList,
@@ -641,6 +651,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       redoAll,
       commit,
       commitAll,
+      clearAll,
       getPendingSummary,
       resolve,
       getList,

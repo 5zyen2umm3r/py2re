@@ -2,13 +2,17 @@ import React, { useEffect, useState } from "react";
 import { HashRouter, Routes, Route, NavLink } from "react-router-dom";
 import {
   CssBaseline, AppBar, Toolbar, Typography, Button, Box,
-  Tooltip, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
+  Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
   List, ListItem, ListItemText, IconButton, Drawer, ListItemButton,
-  CircularProgress, Snackbar, Alert,
+  CircularProgress, Snackbar, Alert, Menu, MenuItem, Divider, Avatar,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import SyncIcon from "@mui/icons-material/Sync";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import LoginIcon from "@mui/icons-material/Login";
+import LogoutIcon from "@mui/icons-material/Logout";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import { EntityProvider, useEntities, PendingDiffSummary } from "./context/EntityContext";
 import { ScheduleFilterProvider } from "./context/ScheduleFilterContext";
 import { TimeLogFilterProvider } from "./context/TimeLogFilterContext";
@@ -35,16 +39,19 @@ const NAV_ITEMS = [
 ];
 
 function AppContent() {
-  const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, pendingCount, commitAll, getPendingSummary } = useEntities();
+  const { loadAll, undo, undoAll, redo, redoAll, canUndo, canRedo, pastCount, futureCount, pendingCount, commitAll, clearAll, getPendingSummary } = useEntities();
   const { isAuthenticated, user, logout, sgLogin, loading: sessionLoading } = useSession();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [summary, setSummary] = useState<PendingDiffSummary[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [sgCommitting, setSgCommitting] = useState(false);
+  const [accountMenuAnchor, setAccountMenuAnchor] = useState<null | HTMLElement>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; severity: "success" | "error" } | null>(null);
 
   const handleSgSync = async () => {
+    setAccountMenuAnchor(null);
     setSyncing(true);
     try {
       await entityApi.sync("all");
@@ -58,6 +65,7 @@ function AppContent() {
   };
 
   const handleSgCommit = async () => {
+    setAccountMenuAnchor(null);
     setSgCommitting(true);
     try {
       await entityApi.commit();
@@ -80,6 +88,12 @@ function AppContent() {
     await commitAll();
   };
 
+  const handleClearConfirm = () => {
+    setClearDialogOpen(false);
+    clearAll();
+    setSnackbar({ message: "ローカル編集をすべてクリアしました", severity: "success" });
+  };
+
   const actionLabel = (action: string) => {
     if (action === "create") return "作成";
     if (action === "update") return "更新";
@@ -91,17 +105,15 @@ function AppContent() {
     initQtChannel().then(() => loadAll());
   }, [loadAll]);
 
+  const displayName = user
+    ? (user.firstName ? `${user.firstName} ${user.lastName}`.trim() : user.username)
+    : null;
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <AppBar position="static">
         <Toolbar sx={{ gap: 1 }}>
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={() => setDrawerOpen(true)}
-            sx={{ mr: 1 }}
-            aria-label="メニューを開く"
-          >
+          <IconButton color="inherit" edge="start" onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
             <MenuIcon />
           </IconButton>
 
@@ -109,11 +121,10 @@ function AppContent() {
 
           <Box sx={{ flexGrow: 1 }} />
 
+          {/* Undo / Redo */}
           <Tooltip title={`全て元に戻す（${pastCount}件）`}>
             <span>
-              <Button color="inherit" disabled={!canUndo} onClick={undoAll} sx={{ minWidth: 0, px: 1 }}>
-                ↩↩
-              </Button>
+              <Button color="inherit" disabled={!canUndo} onClick={undoAll} sx={{ minWidth: 0, px: 1 }}>↩↩</Button>
             </span>
           </Tooltip>
           <Tooltip title={`元に戻す（残り${pastCount}件）`}>
@@ -128,67 +139,90 @@ function AppContent() {
           </Tooltip>
           <Tooltip title={`全てやり直す（${futureCount}件）`}>
             <span>
-              <Button color="inherit" disabled={!canRedo} onClick={redoAll} sx={{ minWidth: 0, px: 1 }}>
-                ↪↪
-              </Button>
+              <Button color="inherit" disabled={!canRedo} onClick={redoAll} sx={{ minWidth: 0, px: 1 }}>↪↪</Button>
             </span>
           </Tooltip>
-          <Tooltip title="FlowPT から全データを同期する">
-            <span>
-              <Button
-                color="inherit"
-                onClick={handleSgSync}
-                disabled={syncing}
-                startIcon={syncing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
-                sx={{ whiteSpace: "nowrap" }}
-              >
-                SG 同期
-              </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title="ローカルの変更を FlowPT へコミットする">
-            <span>
-              <Button
-                color="inherit"
-                onClick={handleSgCommit}
-                disabled={sgCommitting}
-                startIcon={sgCommitting ? <CircularProgress size={14} color="inherit" /> : <CloudUploadIcon />}
-                sx={{ whiteSpace: "nowrap" }}
-              >
-                SG コミット
-              </Button>
-            </span>
-          </Tooltip>
+
+          {/* ローカル Commit */}
           <Button color="inherit" onClick={handleCommitClick} disabled={pendingCount === 0}>
             Commit {pendingCount > 0 ? `(${pendingCount})` : ""}
           </Button>
 
-          {isAuthenticated && user ? (
-            <Tooltip title="ログアウト">
-              <Chip
-                label={user.firstName ? `${user.firstName} ${user.lastName}`.trim() : user.username}
-                onClick={logout}
-                size="small"
-                sx={{ color: "inherit", borderColor: "rgba(255,255,255,0.5)", cursor: "pointer" }}
-                variant="outlined"
-              />
-            </Tooltip>
-          ) : (
-            <Tooltip title="ShotGrid の認証情報でログインします">
-              <span>
-                <Button
-                  color="inherit"
-                  variant="outlined"
-                  size="small"
-                  disabled={sessionLoading}
-                  onClick={() => sgLogin().catch(() => {})}
-                  sx={{ borderColor: "rgba(255,255,255,0.5)", whiteSpace: "nowrap" }}
-                >
-                  SG ログイン
-                </Button>
-              </span>
-            </Tooltip>
-          )}
+          {/* アカウントメニュー */}
+          <Tooltip title={isAuthenticated ? displayName ?? "アカウント" : "アカウント"}>
+            <IconButton
+              color="inherit"
+              onClick={(e) => setAccountMenuAnchor(e.currentTarget)}
+              sx={{ ml: 0.5 }}
+            >
+              {isAuthenticated
+                ? <Avatar sx={{ width: 28, height: 28, fontSize: "0.8rem", bgcolor: "rgba(255,255,255,0.25)" }}>
+                    {displayName?.[0]?.toUpperCase() ?? "U"}
+                  </Avatar>
+                : <AccountCircleIcon />
+              }
+            </IconButton>
+          </Tooltip>
+
+          <Menu
+            anchorEl={accountMenuAnchor}
+            open={Boolean(accountMenuAnchor)}
+            onClose={() => setAccountMenuAnchor(null)}
+            transformOrigin={{ horizontal: "right", vertical: "top" }}
+            anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+          >
+            {/* ユーザー情報 */}
+            {isAuthenticated && displayName && (
+              <MenuItem disabled sx={{ opacity: "1 !important" }}>
+                <Typography variant="body2" color="text.secondary">{displayName}</Typography>
+              </MenuItem>
+            )}
+            {isAuthenticated && <Divider />}
+
+            {/* SG 同期 */}
+            <MenuItem onClick={handleSgSync} disabled={syncing}>
+              {syncing
+                ? <CircularProgress size={16} sx={{ mr: 1.5 }} />
+                : <SyncIcon fontSize="small" sx={{ mr: 1.5 }} />
+              }
+              SG 同期
+            </MenuItem>
+
+            {/* SG コミット */}
+            <MenuItem onClick={handleSgCommit} disabled={sgCommitting}>
+              {sgCommitting
+                ? <CircularProgress size={16} sx={{ mr: 1.5 }} />
+                : <CloudUploadIcon fontSize="small" sx={{ mr: 1.5 }} />
+              }
+              SG コミット
+            </MenuItem>
+
+            <Divider />
+
+            {/* ローカル編集クリア */}
+            <MenuItem onClick={() => { setAccountMenuAnchor(null); setClearDialogOpen(true); }}>
+              <DeleteSweepIcon fontSize="small" sx={{ mr: 1.5, color: "warning.main" }} />
+              <Typography color="warning.main">ローカル編集をクリア</Typography>
+            </MenuItem>
+
+            <Divider />
+
+            {/* SG ログイン / ログアウト */}
+            {isAuthenticated ? (
+              <MenuItem onClick={() => { setAccountMenuAnchor(null); logout(); }}>
+                <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />
+                ログアウト
+              </MenuItem>
+            ) : (
+              <MenuItem
+                onClick={() => { setAccountMenuAnchor(null); sgLogin().catch(() => {}); }}
+                disabled={sessionLoading}
+              >
+                <LoginIcon fontSize="small" sx={{ mr: 1.5 }} />
+                SG ログイン
+              </MenuItem>
+            )}
+          </Menu>
         </Toolbar>
       </AppBar>
 
@@ -293,6 +327,22 @@ function AppContent() {
           <Button onClick={() => setCommitDialogOpen(false)}>キャンセル</Button>
           <Button onClick={handleCommitConfirm} variant="contained" disabled={summary.length === 0}>
             コミット
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ローカル編集クリア確認ダイアログ */}
+      <Dialog open={clearDialogOpen} onClose={() => setClearDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>ローカル編集をクリアしますか？</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            undo/redo 履歴・未コミット差分・LocalStorage に保存されたすべての編集情報を削除します。この操作は元に戻せません。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setClearDialogOpen(false)}>キャンセル</Button>
+          <Button onClick={handleClearConfirm} variant="contained" color="warning">
+            クリア
           </Button>
         </DialogActions>
       </Dialog>
