@@ -17,6 +17,7 @@ import { SessionProvider, useSession } from "./context/SessionContext";
 import { EstimationTable } from "./pages/EstimationTable";
 import { EntityBrowser } from "./pages/EntityBrowser";
 import { TaskSchedule } from "./pages/TaskSchedule";
+import { GanttPage } from "./pages/GanttPage";
 import { TimeLogPage } from "./pages/TimeLogPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -26,6 +27,7 @@ import { entityApi } from "./api/entities";
 const NAV_ITEMS = [
   { label: "工数表", path: "/" },
   { label: "スケジュール", path: "/schedule" },
+  { label: "ガントチャート", path: "/gantt" },
   { label: "タイムログ", path: "/timelog" },
   { label: "エンティティ一覧", path: "/entities" },
   { label: "履歴", path: "/history" },
@@ -230,6 +232,14 @@ function AppContent() {
             element={
               <Box sx={{ height: "100%", overflow: "hidden" }}>
                 <TaskSchedule />
+              </Box>
+            }
+          />
+          <Route
+            path="/gantt"
+            element={
+              <Box sx={{ height: "100%", overflow: "hidden" }}>
+                <GanttPage />
               </Box>
             }
           />
