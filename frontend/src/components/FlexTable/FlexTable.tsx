@@ -36,12 +36,13 @@ interface DragHandleProps {
   overlayLeft: number;
   onPreviewChange: (start: BarPosition, end: BarPosition) => void;
   onDragComplete: (start: BarPosition, end: BarPosition) => void;
+  onDragCancel: () => void;
 }
 
 function DragHandle({
   type, entity, barDef, rowChain, colChains, totalColumns,
   currentStart, currentEnd, containerRef, overlayLeft,
-  onPreviewChange, onDragComplete,
+  onPreviewChange, onDragComplete, onDragCancel,
 }: DragHandleProps) {
   const dragStartX = useRef<number | null>(null);
   const dragStartBarStart = useRef<BarPosition | null>(null);
@@ -115,13 +116,19 @@ function DragHandle({
 
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartX.current === null) return;
+    const moved = Math.abs(e.clientX - dragStartX.current) > 2;
     const positions = calcPositions(e.clientX);
     e.currentTarget.releasePointerCapture(e.pointerId);
     dragStartX.current = null;
     dragStartBarStart.current = null;
     dragStartBarEnd.current = null;
-    onDragComplete(positions.start, positions.end);
-  }, [calcPositions, onDragComplete]);
+    if (moved) {
+      onDragComplete(positions.start, positions.end);
+    } else {
+      // クリックのみ（移動なし）→ プレビューをリセット
+      onDragCancel();
+    }
+  }, [calcPositions, onDragComplete, onPreviewChange, currentStart, currentEnd]);
 
   const style: CSSProperties = type === 'move'
     ? { position: 'absolute', inset: 0, cursor: 'grab', zIndex: 1 }
@@ -193,6 +200,10 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
     setPreview({ start: s, end: e });
   }, []);
 
+  const handleDragCancel = useCallback(() => {
+    setPreview(null);
+  }, []);
+
   const handleStartDragComplete = useCallback((s: BarPosition, e: BarPosition) => {
     setPreview(null);
     barDef.onDragStart?.(entity, rowChain, s);
@@ -231,6 +242,7 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
           overlayLeft={overlayLeft}
           onPreviewChange={handlePreviewChange}
           onDragComplete={handleStartDragComplete}
+          onDragCancel={handleDragCancel}
         />
       )}
       {barDef.onDragMove && (
@@ -247,6 +259,7 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
           overlayLeft={overlayLeft}
           onPreviewChange={handlePreviewChange}
           onDragComplete={handleMoveDragComplete}
+          onDragCancel={handleDragCancel}
         />
       )}
       {barDef.onDragEnd && (
@@ -263,6 +276,7 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
           overlayLeft={overlayLeft}
           onPreviewChange={handlePreviewChange}
           onDragComplete={handleEndDragComplete}
+          onDragCancel={handleDragCancel}
         />
       )}
       {/* 左端ラベル */}
@@ -716,11 +730,6 @@ function RowRenderer({
     const cellEntities: FlowEntity[] = [];
     return (
       <TableRow
-        onContextMenu={
-          hasMenu
-            ? (e) => onContextMenu(e, menuItems, { rowChain: [null], colChain: [], entities: cellEntities })
-            : undefined
-        }
         sx={{
           '& > td': { borderBottom: '2px solid', borderBottomColor: 'divider' },
         }}
@@ -736,11 +745,23 @@ function RowRenderer({
             pl: 4,
             ...(stickyRowHeader ? { position: 'sticky', left: 0, zIndex: 1, backgroundColor: 'background.paper' } : {}),
           }}
+          onContextMenu={
+            hasMenu
+              ? (e) => onContextMenu(e, menuItems, { rowChain: [null], colChain: colChains[0] ?? [], entities: cellEntities })
+              : undefined
+          }
         >
           (EOF)
         </TableCell>
-        {colChains.map((_, ci) => (
-          <TableCell key={ci} />
+        {colChains.map((colChain, ci) => (
+          <TableCell
+            key={ci}
+            onContextMenu={
+              hasMenu
+                ? (e) => onContextMenu(e, menuItems, { rowChain: [null], colChain, entities: cellEntities })
+                : undefined
+            }
+          />
         ))}
       </TableRow>
     );
@@ -772,11 +793,6 @@ function RowRenderer({
     <>
       <TableRow
         ref={containerRef}
-        onContextMenu={
-          hasMenu
-            ? (e) => onContextMenu(e, menuItems, { rowChain: chain, colChain: [], entities: cellEntities })
-            : undefined
-        }
         sx={{
           position: 'relative',
           height: rowHeight,
@@ -799,6 +815,11 @@ function RowRenderer({
               backgroundColor: 'var(--mui-palette-background-paper, #fff)',
             } : {}),
           }}
+          onContextMenu={
+            hasMenu
+              ? (e) => onContextMenu(e, menuItems, { rowChain: chain, colChain: colChains[0] ?? [], entities: cellEntities })
+              : undefined
+          }
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             {hasChildren ? (
@@ -814,8 +835,16 @@ function RowRenderer({
 
         {colChains.map((colChain, ci) => {
           if (!cellDef) {
-            // cell未定義の行はセルを空白描画
-            return <TableCell key={ci} />;
+            return (
+              <TableCell
+                key={ci}
+                onContextMenu={
+                  hasMenu
+                    ? (e) => onContextMenu(e, menuItems, { rowChain: chain, colChain, entities: cellEntities })
+                    : undefined
+                }
+              />
+            );
           }
           const value = cellDef.cellValue(cellEntities, chain, colChain);
           const cellStyle: CSSProperties = cellDef.highlight?.(rowVal, colChain[colChain.length - 1], value) ?? {};
