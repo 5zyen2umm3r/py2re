@@ -53,7 +53,7 @@ export function parseDateLocal(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
-
+export function stringDateLocal(date: Date) : string { return `${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}`; }
 
 /**
  * 全タスクの start_date / due_date から時系列列配列を生成する。
