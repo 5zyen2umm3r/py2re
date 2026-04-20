@@ -503,13 +503,42 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     async (type: EntityType) => {
       const diffs = store.pendingDiffs.filter((d) => d.type === type);
 
-      // create と delete が同一仮IDで対になっている場合は相殺してスキップ
       const cancelledIds = new Set<string>();
       for (const d of diffs) {
         if (d.action === "delete" && typeof d.id === "string" && d.id.startsWith("_new_")) {
           const hasCreate = diffs.some((c) => c.action === "create" && String(c.id) === d.id);
           if (hasCreate) cancelledIds.add(d.id);
         }
+      }
+
+      const idMap = new Map<string, number>();
+
+      function resolvePatch(patch: Partial<FlowEntity>): Partial<FlowEntity> {
+        const resolved: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(patch)) {
+          if (v !== null && typeof v === "object" && !Array.isArray(v) && "id" in (v as object)) {
+            const ref = v as { type?: string; id: unknown };
+            const refId = String(ref.id);
+            if (refId.startsWith("_new_") && idMap.has(refId)) {
+              resolved[k] = { ...ref, id: idMap.get(refId) };
+            } else {
+              resolved[k] = v;
+            }
+          } else if (Array.isArray(v)) {
+            resolved[k] = v.map((item) => {
+              if (item !== null && typeof item === "object" && "id" in item) {
+                const refId = String((item as { id: unknown }).id);
+                if (refId.startsWith("_new_") && idMap.has(refId)) {
+                  return { ...(item as object), id: idMap.get(refId) };
+                }
+              }
+              return item;
+            });
+          } else {
+            resolved[k] = v;
+          }
+        }
+        return resolved as Partial<FlowEntity>;
       }
 
       for (const d of diffs) {
@@ -524,10 +553,16 @@ export function EntityProvider({ children }: { children: ReactNode }) {
           )
         ) as Partial<FlowEntity>;
 
+        const resolvedPatch = resolvePatch(cleanPatch);
+
         if (d.action === "create") {
-          await entityApi.create(type, cleanPatch);
+          const resp = await entityApi.create(type, resolvedPatch);
+          if (d.id !== null && typeof d.id === "string" && d.id.startsWith("_new_")) {
+            const realId = typeof resp.id === "number" ? resp.id : Number(resp.id);
+            if (!isNaN(realId)) idMap.set(d.id, realId);
+          }
         } else if (d.action === "update" && typeof d.id === "number") {
-          await entityApi.update(type, d.id, cleanPatch);
+          await entityApi.update(type, d.id, resolvedPatch);
         } else if (d.action === "delete" && typeof d.id === "number") {
           await entityApi.delete(type, d.id);
         }
@@ -547,6 +582,44 @@ export function EntityProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // 仮ID → 本物ID のマッピング（create レスポンスで順次構築）
+    const idMap = new Map<string, number>();
+
+    /** patch 内の仮ID参照を本物IDに置換する */
+    function resolvePatch(patch: Partial<FlowEntity>): Partial<FlowEntity> {
+      const resolved: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(patch)) {
+        if (
+          v !== null &&
+          typeof v === "object" &&
+          !Array.isArray(v) &&
+          "id" in (v as object)
+        ) {
+          const ref = v as { type?: string; id: unknown };
+          const refId = String(ref.id);
+          if (refId.startsWith("_new_") && idMap.has(refId)) {
+            resolved[k] = { ...ref, id: idMap.get(refId) };
+          } else {
+            resolved[k] = v;
+          }
+        } else if (Array.isArray(v)) {
+          // Multi-entity フィールド（例: task_assignees）
+          resolved[k] = v.map((item) => {
+            if (item !== null && typeof item === "object" && "id" in item) {
+              const refId = String((item as { id: unknown }).id);
+              if (refId.startsWith("_new_") && idMap.has(refId)) {
+                return { ...(item as object), id: idMap.get(refId) };
+              }
+            }
+            return item;
+          });
+        } else {
+          resolved[k] = v;
+        }
+      }
+      return resolved as Partial<FlowEntity>;
+    }
+
     for (const d of store.pendingDiffs) {
       if (typeof d.id === "string" && cancelledIds.has(d.id)) continue;
 
@@ -559,10 +632,20 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         )
       ) as Partial<FlowEntity>;
 
+      // patch 内の仮ID参照を解決
+      const resolvedPatch = resolvePatch(cleanPatch);
+
       if (d.action === "create") {
-        await entityApi.create(d.type, cleanPatch);
+        const resp = await entityApi.create(d.type, resolvedPatch);
+        // レスポンスの本物IDを仮IDにマッピング
+        if (d.id !== null && typeof d.id === "string" && d.id.startsWith("_new_")) {
+          const realId = typeof resp.id === "number" ? resp.id : Number(resp.id);
+          if (!isNaN(realId)) {
+            idMap.set(d.id, realId);
+          }
+        }
       } else if (d.action === "update" && typeof d.id === "number") {
-        await entityApi.update(d.type, d.id, cleanPatch);
+        await entityApi.update(d.type, d.id, resolvedPatch);
       } else if (d.action === "delete" && typeof d.id === "number") {
         await entityApi.delete(d.type, d.id);
       }
@@ -584,6 +667,7 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         if (entity) {
           label = (entity.name as string | undefined)
             ?? (entity.code as string | undefined)
+            ?? (entity.content as string | undefined)
             ?? undefined;
         }
         // create の場合は patch から取得
