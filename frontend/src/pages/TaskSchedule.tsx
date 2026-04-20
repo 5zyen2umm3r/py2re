@@ -221,7 +221,7 @@ export function TaskSchedule() {
                 { name: 'task_assignees', label: '担当ユーザ', type: 'multi_entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)},
                 { name: 'sg_work_category', label: 'カテゴリ', type: 'entity' as const, entityType: 'Category' as const, labelField: 'code', readonly: true },                
               ],
-              defaultValues: { project: projectId , entity: asset?.id, start_date, due_date, category},
+              defaultValues: { project: projectId , entity: asset?.id, start_date, due_date, sg_work_category: category?.id},
               onSubmit: (values) => {
                 create('Task', values);
               },
