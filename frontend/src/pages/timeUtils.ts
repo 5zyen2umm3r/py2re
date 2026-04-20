@@ -33,7 +33,7 @@ function monthStart(date: Date): Date {
 }
 
 /** 列の終了日時（次の列の開始日時）を返す */
-function colEnd(colStart: Date, granularity: TimeGranularity): Date {
+export function colEnd(colStart: Date, granularity: TimeGranularity): Date {
   switch (granularity) {
     case 'day':
       return new Date(colStart.getFullYear(), colStart.getMonth(), colStart.getDate() + 1);

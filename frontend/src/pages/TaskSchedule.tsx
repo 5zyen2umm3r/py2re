@@ -18,6 +18,7 @@ import {
   clampStartDate,
   clampDueDate,
   parseDateLocal,
+  colEnd,
 } from './timeUtils';
 
 // ── ヘルパー ──────────────────────────────────────────────────
@@ -200,7 +201,8 @@ export function TaskSchedule() {
           label: 'タスクを追加',
           action: ({ rowChain, colChain }) => {
             const asset = rowChain[0] as FlowEntity;
-            const date = colChain && colChain.length > 0 ? colChain[0] : null;
+            const start_date = (colChain && colChain.length > 0) ? colChain[0] as Date : null;
+            const end_date = start_date && colEnd(start_date, granularity);
             const projectId = (asset.project as FlowEntity)?.id;
             openForm({
               title: 'タスクを追加',
@@ -212,7 +214,7 @@ export function TaskSchedule() {
                 { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
                 { name: 'task_assignees', label: '担当ユーザ', type: 'multi_entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)},
               ],
-              defaultValues: { project: projectId , entity: asset?.id, start_date: date },
+              defaultValues: { project: projectId , entity: asset?.id, start_date, end_date},
               onSubmit: (values) => {
                 create('Task', values);
               },
