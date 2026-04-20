@@ -109,6 +109,11 @@ export function GanttPage() {
       const d = parseDateLocal(s);
       return `${d.getMonth() + 1}/${d.getDate()}`;
     },
+    labelOuterRight: (task) => {
+      const assignees = task['task_assignees'] as { name?: string }[] | undefined;
+      if (!Array.isArray(assignees) || assignees.length === 0) return null;
+      return assignees.map((u) => u?.name ?? '').filter(Boolean).join(', ');
+    },
     style: (task) => getTaskStyle(task),
     onDragStart: (task, _rowChain, newPosition) => {
       const newDate = barPositionToDate(newPosition, timeCols, granularity);

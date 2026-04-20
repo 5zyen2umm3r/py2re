@@ -196,6 +196,20 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
   const customStyle = barDef.style ? barDef.style(entity) : {};
   const barStyle: CSSProperties = { ...defaultStyle, ...customStyle };
 
+  // 外側ラベル共通スタイル
+  const outerLabelBase: CSSProperties = {
+    position: 'absolute',
+    top: laneTop,
+    height: laneHeight,
+    display: 'flex',
+    alignItems: 'center',
+    fontSize: '0.72rem',
+    color: 'rgba(0,0,0,0.7)',
+    whiteSpace: 'nowrap',
+    pointerEvents: 'none',
+    zIndex: 2,
+  };
+
   const handlePreviewChange = useCallback((s: BarPosition, e: BarPosition) => {
     setPreview({ start: s, end: e });
   }, []);
@@ -220,14 +234,21 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
   }, [barDef, entity, rowChain]);
 
   return (
-    <div
-      style={barStyle}
-      onContextMenu={barDef.contextMenu ? (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onContextMenu(e, barDef.contextMenu!.items, entity, rowChain);
-      } : undefined}
-    >
+    <>
+      {/* バー外側・左ラベル */}
+      {barDef.labelOuterLeft && (
+        <span style={{ ...outerLabelBase, right: `${100 - left}%`, justifyContent: 'flex-end', paddingRight: 4 }}>
+          {barDef.labelOuterLeft(entity)}
+        </span>
+      )}
+      <div
+        style={barStyle}
+        onContextMenu={barDef.contextMenu ? (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e, barDef.contextMenu!.items, entity, rowChain);
+        } : undefined}
+      >
       {barDef.onDragStart && (
         <DragHandle
           type="start"
@@ -315,6 +336,13 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
         </span>
       )}
     </div>
+      {/* バー外側・右ラベル */}
+      {barDef.labelOuterRight && (
+        <span style={{ ...outerLabelBase, left: `${100 - right}%`, paddingLeft: 4 }}>
+          {barDef.labelOuterRight(entity)}
+        </span>
+      )}
+    </>
   );
 }
 

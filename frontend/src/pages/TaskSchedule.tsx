@@ -110,7 +110,7 @@ export function TaskSchedule() {
       const end = dateToBarPosition(dueDate, timeCols, granularity);
       return { start, end };
     },
-    label: (task) => String(task['content'] ?? ''),
+    labelOuterRight: (task) => String(task['content'] ?? ''),
     labelStart: (task) => {
       const s = task['start_date'] as string | null | undefined;
       if (!s) return null;

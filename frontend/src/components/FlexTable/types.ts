@@ -21,6 +21,10 @@ export interface BarDef {
   labelStart?: (entity: FlowEntity) => ReactNode;
   /** バー右端に右詰めで表示するラベル（省略可） */
   labelEnd?: (entity: FlowEntity) => ReactNode;
+  /** バーの外側・左に表示するラベル（省略可） */
+  labelOuterLeft?: (entity: FlowEntity) => ReactNode;
+  /** バーの外側・右に表示するラベル（省略可） */
+  labelOuterRight?: (entity: FlowEntity) => ReactNode;
   style?: (entity: FlowEntity) => CSSProperties;
   /** バー上で右クリックした際に表示するコンテキストメニュー（省略可） */
   contextMenu?: BarContextMenuDef;
