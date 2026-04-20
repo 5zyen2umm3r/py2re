@@ -125,6 +125,7 @@ export function TaskSchedule() {
     labelEnd: (task) => {
       const s = task['due_date'] as string | null | undefined;
       if (!s) return null;
+      if (task.due_date == task.start_date) return null;
       const d = parseDateLocal(s);
       return `${d.getMonth() + 1}/${d.getDate()}`;
     },

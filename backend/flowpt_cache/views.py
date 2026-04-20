@@ -9,7 +9,7 @@ from .serializers import (
     CachedEntitySerializer, CachedProjectSerializer, EntityDiffSerializer,
     EntityHistorySerializer, SnapshotSerializer, SyncStateSerializer,
 )
-from .sync import sync_all, sync_entity_type, commit_diffs_to_flowpt
+from .sync import sync_all, sync_entity_type, commit_diffs_to_flowpt, _registered_project_ids
 
 
 def _apply_diffs(entity_type: str, base_map: dict) -> list[dict]:
@@ -186,7 +186,7 @@ class EntityViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"], url_path="sync")
     def sync(self, request, entity_type=None):
         full = bool(request.data.get("full", False))
-        project_ids: list[int] | None = request.data.get("project_ids") or None
+        project_ids: list[int] | None = request.data.get("project_ids") if "project_ids" in request.data else _registered_project_ids()
         if entity_type and entity_type != "all":
             result = sync_entity_type(entity_type, full=full, project_ids=project_ids)
         else:
