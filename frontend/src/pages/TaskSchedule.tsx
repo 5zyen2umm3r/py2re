@@ -21,6 +21,7 @@ import {
   colEnd,
   stringDateLocal,
 } from './timeUtils';
+import { AssetFields, TaskFields } from './fields';
 
 // ── ヘルパー ──────────────────────────────────────────────────
 
@@ -213,15 +214,11 @@ export function TaskSchedule() {
             const projectId = (asset.project as FlowEntity)?.id;
             openForm({
               title: 'タスクを追加',
-              fields: [
-                { name: 'project', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'name', readonly: true },
-                { name: 'entity', label: 'アセット', type: 'entity' as const, entityType: 'Asset' as const, labelField: 'code', readonly: true },
-                { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
-                { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
-                { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
-                { name: 'task_assignees', label: '担当ユーザ', type: 'multi_entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)},
-                { name: 'sg_work_category', label: 'カテゴリ', type: 'entity' as const, entityType: 'Category' as const, labelField: 'code', readonly: true },                
-              ],
+              fields: TaskFields.map(
+                  v => (v.name === "task_assignees") ? 
+                    {...v, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)} :
+                    v
+              ),
               defaultValues: { project: projectId , entity: asset?.id, start_date, due_date, sg_work_category: category?.id},
               onSubmit: (values) => {
                 create('Task', values);
@@ -230,16 +227,13 @@ export function TaskSchedule() {
           },
         },
         {
-          label: 'アセットを追加',
+          label: 'Assetを追加',
           action: ({ rowChain }) => {
             const asset = rowChain[0] as FlowEntity | null;
             const projectId = (asset?.['project'] as any)?.id ?? null;
             openForm({
-              title: 'アセットを追加',
-              fields: [
-                { name: 'code', label: 'アセットコード', type: 'text' as const, required: true },
-                { name: 'project', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'name', required: true },
-              ],
+              title: 'Assetを追加',
+              fields: AssetFields,
               defaultValues: { project: projectId ?? undefined },
               onSubmit: (values) => {
                 create('Asset', values);
@@ -248,7 +242,7 @@ export function TaskSchedule() {
           },
         },
         {
-          label: 'アセットを削除',
+          label: 'Assetを削除',
           action: ({ rowChain }) => {
             const asset = rowChain[0] as FlowEntity | null;
             if (!asset?.id) return;

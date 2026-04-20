@@ -18,6 +18,7 @@ import { useScheduleFilter } from "../context/ScheduleFilterContext";
 import { FlowEntity } from "../api/entities";
 import { ScheduleFilterBar } from "../components/ScheduleFilterBar/ScheduleFilterBar";
 import { buildAssetFilter } from "../utils/assetFilter";
+import { AssetFields, EstimationFields } from "./fields";
 
 // ---- 月次列 ----
 const ALL_MONTHS: Date[] = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1));
@@ -258,16 +259,7 @@ export function EstimationTable() {
               null;
             openForm({
               title: "Assetを追加",
-              fields: [
-                { name: "project", label: "Project", type: "entity", entityType: "Project", required: true },
-                { name: "sg_phase", label: "Phase", type: "entity", entityType: "Phase", labelField: "code", required: true },
-                { name: "code",    label: "Asset名", type: "text", required: true },
-                {
-                  name: "sg_asset_type", label: "アセットタイプ", type: "select", required: false,
-                  options: ["Character", "Prop", "Vehicle", "Environment",
-                     "FX"].map((v) => ({ value: v, label: v })),
-                },
-              ],
+              fields: AssetFields,
               defaultValues: { project: projectId, sg_phase: phaseId },
               onSubmit: (values) => {
                 create("Asset", values);
@@ -293,11 +285,8 @@ export function EstimationTable() {
               : undefined;
             openForm({
               title: "Estimationを追加",
-              fields: estimationFields,
-              defaultValues: {
-                project:  assetProject?.id,
-                sg_asset: asset.id,
-              },
+              fields: EstimationFields,
+              defaultValues: {project: assetProject?.id, sg_asset: asset.id,},
               onSubmit: (values) => {
                 create("Estimation", {
                   ...values,
