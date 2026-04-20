@@ -145,7 +145,9 @@ export function formatColHeader(date: Date, granularity: TimeGranularity): strin
       const y = date.getFullYear();
       const m = String(date.getMonth() + 1).padStart(2, '0');
       const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
+      const dw = ["日", "月", "火", "水", "木" ,"金" ,"土"][date.getDay()];
+      //return `${y}-${m}-${d}`;
+      return `${m}-${d} (${dw})`;
     }
     case 'week': {
       const { year, week } = getISOWeek(date);
@@ -153,7 +155,8 @@ export function formatColHeader(date: Date, granularity: TimeGranularity): strin
       const y = date.getFullYear();
       const m = String(date.getMonth() + 1).padStart(2, '0');
       const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}~ (W${String(week).padStart(2, '0')})`;
+      //return `${y}-${m}-${d}~ (W${String(week).padStart(2, '0')})`;
+      return `${m}-${d}~ (W${String(week).padStart(2, '0')})`;
     }
     case 'month': {
       const y = date.getFullYear();
