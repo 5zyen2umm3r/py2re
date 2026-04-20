@@ -69,6 +69,7 @@ const ENTITY_TYPES: EntityType[] = [
   "Estimation",
   "TimeLog",
   "SubProject",
+  "Category",
 ];
 
 function emptyState(): StoreState {

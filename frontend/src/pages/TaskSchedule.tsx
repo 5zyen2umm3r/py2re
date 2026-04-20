@@ -61,7 +61,9 @@ export function TaskSchedule() {
   const { getList, patch, create, remove, getAll } = useEntities();
   const { selectedProjectIds, selectedSubProjectIds, selectedPhaseIds, rangeStart, rangeEnd } = useScheduleFilter();
 
-  const [granularity, setGranularity] = useState<TimeGranularity>('week');
+  const [granularity, setGranularity] = useState<TimeGranularity>(() => {
+    try { return (localStorage.getItem('granularity_schedule') as TimeGranularity) || 'week'; } catch { return 'week'; }
+  });
   const { formProps, openForm } = useDynamicForm();
 
   const tasks = getList('Task');
@@ -79,20 +81,20 @@ export function TaskSchedule() {
     [tasks, granularity, rangeStart, rangeEnd],
   );
 
-  // Shift+ホイールで粒度切り替え
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (!e.shiftKey) return;
     e.preventDefault();
     setGranularity((prev) => {
+      let next = prev;
       if (e.deltaY < 0) {
-        if (prev === 'month') return 'week';
-        if (prev === 'week') return 'day';
-        return prev;
+        if (prev === 'month') next = 'week';
+        else if (prev === 'week') next = 'day';
       } else {
-        if (prev === 'day') return 'week';
-        if (prev === 'week') return 'month';
-        return prev;
+        if (prev === 'day') next = 'week';
+        else if (prev === 'week') next = 'month';
       }
+      try { localStorage.setItem('granularity_schedule', next); } catch { /* ignore */ }
+      return next;
     });
   }, []);
 
@@ -110,7 +112,7 @@ export function TaskSchedule() {
       const dueDate = parseDateLocal(dueStr);
       if (isNaN(startDate.getTime()) || isNaN(dueDate.getTime())) return invalid;
       const start = dateToBarPosition(startDate, timeCols, granularity);
-      const end = dateToBarPosition(dueDate, timeCols, granularity);
+      const end = dateToBarPosition(dueDate, timeCols, granularity, true);
       return { start, end };
     },
     label: (task) => String(task['content'] ?? ''),
@@ -136,7 +138,7 @@ export function TaskSchedule() {
       patch('Task', task.id, { start_date: clamped });
     },
     onDragEnd: (task, _rowChain, newPosition) => {
-      const newDate = barPositionToDate(newPosition, timeCols, granularity);
+      const newDate = barPositionToDate(newPosition, timeCols, granularity, true);
       const newDueStr = formatDateToISO(newDate);
       if (newDueStr === (task['due_date'] as string)) return;
       const startStr = (task['start_date'] as string) ?? newDueStr;
@@ -145,7 +147,7 @@ export function TaskSchedule() {
     },
     onDragMove: (task, _rowChain, newStart, newEnd) => {
       const startDate = barPositionToDate(newStart, timeCols, granularity);
-      const dueDate = barPositionToDate(newEnd, timeCols, granularity);
+      const dueDate = barPositionToDate(newEnd, timeCols, granularity, true);
       const start_date = formatDateToISO(startDate);
       const due_date = formatDateToISO(dueDate);
       if (start_date === (task['start_date'] as string) && due_date === (task['due_date'] as string)) return;

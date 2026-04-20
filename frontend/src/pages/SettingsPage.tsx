@@ -4,6 +4,10 @@ import {
   Alert,
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   IconButton,
@@ -17,15 +21,17 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import { useSettings, MinUnit, HighlightZone } from "../context/SettingsContext";
 
 const MIN_UNIT_OPTIONS: MinUnit[] = [5, 10, 15, 30, 60];
 
 export function SettingsPage(): JSX.Element {
-  const { settings, updateTimeLogSettings, exportSettings, importSettings } = useSettings();
+  const { settings, updateTimeLogSettings, exportSettings, importSettings, clearAllSettings } = useSettings();
   const { timeLog } = settings;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   // --- TimeLog handlers ---
 
@@ -220,6 +226,46 @@ export function SettingsPage(): JSX.Element {
           {importError}
         </Alert>
       )}
+
+      <Divider sx={{ my: 3 }} />
+
+      {/* 全設定クリア */}
+      <Paper variant="outlined" sx={{ p: 2, borderColor: 'warning.main' }}>
+        <Typography variant="subtitle1" gutterBottom color="warning.main">
+          危険な操作
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          すべての設定・フィルタ・粒度設定を初期値にリセットします。
+        </Typography>
+        <Button
+          variant="outlined"
+          color="warning"
+          startIcon={<DeleteSweepIcon />}
+          onClick={() => setClearDialogOpen(true)}
+        >
+          全設定をクリア
+        </Button>
+      </Paper>
+
+      {/* 確認ダイアログ */}
+      <Dialog open={clearDialogOpen} onClose={() => setClearDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>全設定をクリアしますか？</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            TimeLog設定・スケジュールフィルタ・粒度設定がすべて初期値にリセットされます。この操作は元に戻せません。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setClearDialogOpen(false)}>キャンセル</Button>
+          <Button
+            color="warning"
+            variant="contained"
+            onClick={() => { setClearDialogOpen(false); clearAllSettings(); }}
+          >
+            クリア
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

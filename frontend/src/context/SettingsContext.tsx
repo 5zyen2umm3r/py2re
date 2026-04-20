@@ -23,8 +23,9 @@ export interface AppSettings {
 interface SettingsContextValue {
   settings: AppSettings;
   updateTimeLogSettings: (patch: Partial<TimeLogSettings>) => void;
-  exportSettings: () => string;           // returns JSON string
-  importSettings: (json: string) => void; // throws on failure
+  exportSettings: () => string;
+  importSettings: (json: string) => void;
+  clearAllSettings: () => void;
 }
 
 // Constants
@@ -129,15 +130,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }
 
   function importSettings(json: string): void {
-    const parsed = JSON.parse(json); // throws SyntaxError on invalid JSON
-    const validated = validateSettings(parsed); // throws on schema violation
+    const parsed = JSON.parse(json);
+    const validated = validateSettings(parsed);
     setSettings(validated);
     saveSettings(validated);
   }
 
+  function clearAllSettings(): void {
+    // appSettings
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    // scheduleFilter
+    try { localStorage.removeItem('scheduleFilter'); } catch { /* ignore */ }
+    // granularity
+    try { localStorage.removeItem('granularity_schedule'); } catch { /* ignore */ }
+    try { localStorage.removeItem('granularity_gantt'); } catch { /* ignore */ }
+    setSettings(DEFAULT_SETTINGS);
+  }
+
   return (
     <SettingsContext.Provider
-      value={{ settings, updateTimeLogSettings, exportSettings, importSettings }}
+      value={{ settings, updateTimeLogSettings, exportSettings, importSettings, clearAllSettings }}
     >
       {children}
     </SettingsContext.Provider>

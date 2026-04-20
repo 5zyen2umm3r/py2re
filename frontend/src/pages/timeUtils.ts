@@ -59,6 +59,7 @@ export function stringDateLocal(date: Date) : string { return `${date.getFullYea
  * 全タスクの start_date / due_date から時系列列配列を生成する。
  * 最低4週間を保証し、granularity に応じた列を返す。
  * rangeStart / rangeEnd が指定された場合はその範囲を優先する。
+ * rangeEnd は「その日を含む列まで」生成する（末月末日が欠けないよう翌日に拡張）。
  */
 export function generateTimeCols(
   tasks: FlowEntity[],
@@ -72,7 +73,10 @@ export function generateTimeCols(
 
   // 外部指定の範囲があればそれを優先
   let minDate: Date | null = rangeStart ? parseDateLocal(rangeStart) : null;
-  let maxDate: Date | null = rangeEnd ? parseDateLocal(rangeEnd) : null;
+  // rangeEnd は「その日を含む」ため、翌日0時を上限とする
+  let maxDate: Date | null = rangeEnd
+    ? new Date(parseDateLocal(rangeEnd).getTime() + 86400000)
+    : null;
 
   // タスクの日付範囲でさらに拡張（外部指定がない場合はタスクから算出）
   if (!minDate || !maxDate) {
@@ -86,7 +90,8 @@ export function generateTimeCols(
         }
       }
       if (dueStr && !rangeEnd) {
-        const d = parseDateLocal(dueStr);
+        // due_date も翌日0時で比較
+        const d = new Date(parseDateLocal(dueStr).getTime() + 86400000);
         if (!isNaN(d.getTime())) {
           if (!maxDate || d > maxDate) maxDate = d;
         }
@@ -124,7 +129,8 @@ export function generateTimeCols(
   }
 
   const cols: Date[] = [];
-  while (cursor <= maxDate) {
+  // maxDate（翌日0時）より前の列を生成 → 末日の列が確実に含まれる
+  while (cursor < maxDate) {
     cols.push(new Date(cursor));
     const next = colEnd(cursor, granularity);
     cursor = next;
@@ -168,23 +174,29 @@ export function formatColHeader(date: Date, granularity: TimeGranularity): strin
 
 /**
  * 日付を BarPosition に変換する。
- * 範囲外の場合はクランプする。
+ * inclusive=true の場合、その日の終わり（翌日0時）として変換する（due_date 用）。
  */
 export function dateToBarPosition(
   date: Date,
   timeCols: Date[],
   granularity: TimeGranularity,
+  inclusive = false,
 ): BarPosition {
+  // inclusive の場合は翌日0時として扱う
+  const target = inclusive
+    ? new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
+    : date;
+
   if (timeCols.length === 0) return { colIndex: 0, offset: 0 };
 
   for (let i = 0; i < timeCols.length; i++) {
     const start = timeCols[i];
     const end = colEnd(start, granularity);
-    if (date < end) {
-      if (date < start) {
+    if (target <= end) {
+      if (target <= start) {
         return { colIndex: 0, offset: 0 };
       }
-      const offset = (date.getTime() - start.getTime()) / (end.getTime() - start.getTime());
+      const offset = (target.getTime() - start.getTime()) / (end.getTime() - start.getTime());
       return { colIndex: i, offset: Math.min(1, Math.max(0, offset)) };
     }
   }
@@ -194,11 +206,13 @@ export function dateToBarPosition(
 
 /**
  * BarPosition を Date に変換する。
+ * inclusive=true の場合、翌日0時として計算された位置から1日引いて due_date 用の日付を返す。
  */
 export function barPositionToDate(
   pos: BarPosition,
   timeCols: Date[],
   granularity: TimeGranularity,
+  inclusive = false,
 ): Date {
   if (timeCols.length === 0) return new Date();
 
@@ -208,7 +222,13 @@ export function barPositionToDate(
   const start = timeCols[clampedIndex];
   const end = colEnd(start, granularity);
   const ms = start.getTime() + clampedOffset * (end.getTime() - start.getTime());
-  return new Date(ms);
+  const date = new Date(ms);
+
+  if (inclusive) {
+    // due_date として使う場合: ドラッグ位置の日付（翌日0時 → 前日）
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1);
+  }
+  return date;
 }
 
 /**
