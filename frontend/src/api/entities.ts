@@ -44,14 +44,17 @@ export const entityApi = {
     apiFetch<void>(`${BASE}/${type}/${id}/`, { method: "DELETE" }),
 
   /** _new_xxx 形式の文字列IDを持つ Django-only エンティティ（未FlowPT登録）を削除する */
-  deleteByStringId: (type: EntityType, id: string) =>
-    apiFetch<void>(`${BASE}/${type}/${id}/`, { method: "DELETE" }),
+  deleteByStringId: (type: EntityType, id: string) => {
+    // "_new_42" → DELETE /api/entities/Asset/_new_42/
+    // URLルーターが /_new_<int>/ パターンにマッチする
+    return apiFetch<void>(`${BASE}/${type}/${id}/`, { method: "DELETE" });
+  },
 
   sync: (type: EntityType | "all" = "all") =>
     apiFetch<Record<string, unknown>>(`${BASE}/${type}/sync/`, { method: "POST" }),
 
-  commit: (type: EntityType, diffIds?: number[]) =>
-    apiFetch<{ status: string }>(`${BASE}/${type}/commit/`, {
+  commit: (diffIds?: number[]) =>
+    apiFetch<{ status: string }>(`${BASE}/all/commit/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ diff_ids: diffIds }),

@@ -58,9 +58,7 @@ function AppContent() {
   const handleSgCommit = async () => {
     setSgCommitting(true);
     try {
-      // 全エンティティタイプに対して commit を実行
-      const types = ["HumanUser", "Project", "Asset", "Task", "Phase", "Step", "Estimation", "TimeLog"] as const;
-      await Promise.all(types.map((t) => entityApi.commit(t)));
+      await entityApi.commit();
       setSnackbar({ message: "FlowPT へコミットしました", severity: "success" });
     } catch (e) {
       setSnackbar({ message: `コミットエラー: ${e}`, severity: "error" });

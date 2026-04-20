@@ -4,7 +4,7 @@
  */
 import { ReactNode } from "react";
 import { FlowEntity, EntityType } from "../api/entities";
-export type FieldType = "text" | "number" | "select" | "entity" | "date" | "readonly";
+export type FieldType = "text" | "number" | "select" | "entity" | "multi_entity" | "date" | "readonly";
 
 interface FieldBase {
   name: string;
@@ -46,6 +46,16 @@ export interface EntityField extends FieldBase {
   labelField?: string;
 }
 
+/** Multi-Entityフィールド: 複数エンティティを選択（ShotGrid multi_entity型に対応） */
+export interface MultiEntityField extends FieldBase {
+  type: "multi_entity";
+  entityType: EntityType;
+  /** 選択肢を絞り込むフィルタ関数 */
+  filter?: (entity: FlowEntity) => boolean;
+  /** 表示ラベルに使うフィールド名（デフォルト: "name"） */
+  labelField?: string;
+}
+
 export interface DateField extends FieldBase {
   type: "date";
 }
@@ -60,5 +70,6 @@ export type FieldDef =
   | NumberField
   | SelectField
   | EntityField
+  | MultiEntityField
   | DateField
   | ReadonlyField;

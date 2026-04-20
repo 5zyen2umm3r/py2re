@@ -46,6 +46,7 @@ type Action =
       patch: Partial<FlowEntity>;
     }
   | { kind: "CREATE"; entityType: EntityType; entity: FlowEntity; tempId: string }
+  | { kind: "REPLACE_TEMP_ID"; entityType: EntityType; oldId: string; newId: string; newEntity: FlowEntity }
   | { kind: "DELETE"; entityType: EntityType; id: number | string }
   | { kind: "UNDO" }
   | { kind: "UNDO_ALL" }
@@ -305,6 +306,39 @@ function reducer(store: EntityStore, action: Action): EntityStore {
         pendingDiffs: [...store.pendingDiffs, ...redoDiffs],
       };
     }
+    case "REPLACE_TEMP_ID": {
+      // Django から返ってきた確定仮ID（_new_{diff_id}）でフロント側仮IDを置換する
+      const oldId = action.oldId;
+      const newId = action.newId;
+      const map = { ...store.state[action.entityType] };
+      delete map[oldId];
+      map[newId] = action.newEntity;
+
+      // past / future の HistoryEntry 中の id も置換
+      const replaceInEntries = (groups: HistoryEntry[][]): HistoryEntry[][] =>
+        groups.map((group) =>
+          group.map((e) =>
+            e.type === action.entityType && String(e.id) === oldId
+              ? { ...e, id: newId, after: e.after ? { ...e.after, id: newId as unknown as number } : e.after }
+              : e
+          )
+        );
+
+      // pendingDiffs の id も置換
+      const newPendingDiffs = store.pendingDiffs.map((d) =>
+        d.type === action.entityType && String(d.id) === oldId
+          ? { ...d, id: newId }
+          : d
+      );
+
+      return {
+        ...store,
+        state: { ...store.state, [action.entityType]: map },
+        past: replaceInEntries(store.past),
+        future: replaceInEntries(store.future),
+        pendingDiffs: newPendingDiffs,
+      };
+    }
     case "CLEAR_PENDING":
       return { ...store, pendingDiffs: [] };
     case "CLEAR_ALL_HISTORY":
@@ -357,7 +391,7 @@ interface EntityContextValue {
   loadAll: () => Promise<void>;
   load: (type: EntityType) => Promise<void>;
   patch: (type: EntityType, id: number | string, data: Partial<FlowEntity>) => void;
-  create: (type: EntityType, data: Partial<FlowEntity>) => void;
+  create: (type: EntityType, data: Partial<FlowEntity>) => Promise<void>;
   remove: (type: EntityType, id: number | string) => void;
   undo: () => void;
   undoAll: () => void;
@@ -435,13 +469,33 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  // 仮ID採番用カウンタ（コンポーネントをまたいで一意にするためモジュールスコープ）
   const create = useCallback(
-    (type: EntityType, data: Partial<FlowEntity>) => {
+    async (type: EntityType, data: Partial<FlowEntity>) => {
+      // まずフロントエンド側に仮IDでエンティティを作成して即時反映
       const tempId = `_new_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const entity: FlowEntity = { id: tempId as unknown as number, type, ...data };
       dispatch({ kind: "CREATE", entityType: type, entity, tempId });
-      // APIは呼ばない。commit時に送信する。
+
+      // Django に POST して EntityDiff.id を取得し、確定仮IDに置換する
+      try {
+        const cleanData = Object.fromEntries(
+          Object.entries(data).filter(
+            ([k, v]) =>
+              k !== "_diff_id" &&
+              k !== "id" &&
+              !(typeof v === "string" && v.startsWith("_new_"))
+          )
+        ) as Partial<FlowEntity>;
+        const resp = await entityApi.create(type, cleanData);
+        // レスポンス: { id: "_new_42", _diff_id: 42, ... }
+        const djangoId = String(resp.id); // "_new_42"
+        if (djangoId !== tempId && djangoId.startsWith("_new_")) {
+          const newEntity: FlowEntity = { ...entity, id: djangoId as unknown as number };
+          dispatch({ kind: "REPLACE_TEMP_ID", entityType: type, oldId: tempId, newId: djangoId, newEntity });
+        }
+      } catch (e) {
+        console.error("create failed:", e);
+      }
     },
     [],
   );
@@ -475,14 +529,13 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         ) as Partial<FlowEntity>;
 
         if (d.action === "create") {
-          await entityApi.create(type, cleanPatch);
+          // no-op: already sent to Django on create
         } else if (d.action === "update" && typeof d.id === "number") {
           await entityApi.update(type, d.id, cleanPatch);
         } else if (d.action === "delete") {
           if (typeof d.id === "number") {
             await entityApi.delete(type, d.id);
           } else if (typeof d.id === "string" && d.id.startsWith("_new_")) {
-            // Django に登録済みだが FlowPT ID がない create diff レコードを削除する
             await entityApi.deleteByStringId(type, d.id);
           }
         }
@@ -503,8 +556,9 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         )
       ) as Partial<FlowEntity>;
 
+      // create は既に Django 登録済み（create 時に POST 済み）のためスキップ
       if (d.action === "create") {
-        await entityApi.create(d.type, cleanPatch);
+        // no-op: already sent to Django on create
       } else if (d.action === "update" && typeof d.id === "number") {
         await entityApi.update(d.type, d.id, cleanPatch);
       } else if (d.action === "delete") {
@@ -515,7 +569,6 @@ export function EntityProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-    // commit 後は履歴・pending をすべてクリアして状態を Fix する
     dispatch({ kind: "CLEAR_ALL_HISTORY" });
   }, [store.pendingDiffs]);
 
