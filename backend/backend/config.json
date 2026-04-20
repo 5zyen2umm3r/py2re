@@ -17,7 +17,7 @@
     },
     "Task": {
       "filters": [["sg_status_list", "not_in", ["omt"]]],
-      "fields": ["id", "content", "sg_status_list", "project", "entity", "step", "task_assignees", "start_date", "due_date", "duration"],
+      "fields": ["id", "content", "sg_status_list", "project", "entity", "step", "task_assignees", "start_date", "due_date", "duration", "sg_work_category"],
       "project_filter_field": "project"
     },
     "Phase": {

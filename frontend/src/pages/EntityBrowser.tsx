@@ -21,7 +21,7 @@ import { DynamicForm } from "../components/DynamicForm/DynamicForm";
 import { FieldDef } from "../components/DynamicForm/types";
 
 const ENTITY_TYPES: EntityType[] = [
-  "HumanUser", "Project", "SubProject", "Phase", "Asset", "Task", "Step", "Estimation",
+  "HumanUser", "Project", "SubProject", "Phase", "Asset", "Task", "Step", "Estimation", "Category"
 ];
 
 // ---- フィールド値の表示ヘルパー ----

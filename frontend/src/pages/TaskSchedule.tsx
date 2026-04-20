@@ -65,6 +65,7 @@ export function TaskSchedule() {
   const { formProps, openForm } = useDynamicForm();
 
   const tasks = getList('Task');
+  const categories = getList('Category');
   const allPhases = getList('Phase');
 
   const assetFilter = useMemo(
@@ -201,6 +202,7 @@ export function TaskSchedule() {
         {
           label: 'タスクを追加',
           action: ({ rowChain, colChain }) => {
+            const category = (categories && categories.length > 0) ? categories[0] : null;
             const asset = rowChain[0] as FlowEntity;
             const _start_date = (colChain && colChain.length > 0) ? colChain[0] as Date : null;
             const start_date = _start_date && stringDateLocal(_start_date);
@@ -215,8 +217,9 @@ export function TaskSchedule() {
                 { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
                 { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
                 { name: 'task_assignees', label: '担当ユーザ', type: 'multi_entity' as const, entityType: 'HumanUser' as const, labelField: 'name', required: false, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)},
+                { name: 'sg_work_category', label: 'カテゴリ', type: 'entity' as const, entityType: 'Category' as const, labelField: 'code', readonly: true },                
               ],
-              defaultValues: { project: projectId , entity: asset?.id, start_date, due_date},
+              defaultValues: { project: projectId , entity: asset?.id, start_date, due_date, category},
               onSubmit: (values) => {
                 create('Task', values);
               },
