@@ -144,6 +144,11 @@ CSRF_TRUSTED_ORIGINS = [
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
 
+#
+# FLOWPT
+FLOWPT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+
+
 try:
     from local import *
 except:

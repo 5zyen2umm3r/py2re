@@ -210,7 +210,7 @@ export function EstimationTable() {
               isSameMonth(e.sg_month as string, month)
           ) ?? null;
         },
-        display: (est) => est ? `${(est as FlowEntity).sg_hours || 0}h` : "",
+        display: (est) => est ? `${((est as FlowEntity).sg_hours || 0) as number / HOURS_PER_MONTH}` : "",
         editField: {
           name: "sg_hours",
           label: "工数（人月）",

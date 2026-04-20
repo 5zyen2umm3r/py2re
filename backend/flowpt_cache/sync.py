@@ -6,11 +6,11 @@ from pathlib import Path
 
 import shotgun_api3
 from django.db import transaction
+from django.conf import settings
 
 from .models import CachedEntity, CachedProject, EntityHistory, SyncState
 
-CONFIG_PATH = Path(__file__).parent / "config.json"
-
+CONFIG_PATH = settings.FLOWPT_CONFIG_PATH
 
 def _load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:

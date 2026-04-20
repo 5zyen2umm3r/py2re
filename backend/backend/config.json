@@ -47,6 +47,11 @@
       "filters": [],
       "fields": ["id", "code", "project"],
       "project_filter_field": "project"
+    },
+    "Category": {
+      "type": "CustomNonProjectEntity02",
+      "filters": [],
+      "fields": ["id", "code"]      
     }
   }
 }
