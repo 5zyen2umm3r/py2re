@@ -19,6 +19,8 @@ import { useEntities } from "../context/EntityContext";
 import { EntityType, FlowEntity } from "../api/entities";
 import { DynamicForm } from "../components/DynamicForm/DynamicForm";
 import { FieldDef } from "../components/DynamicForm/types";
+import { useDynamicForm } from "../components/DynamicForm/useDynamicForm";
+import { TypedFields } from "./fields";
 
 const ENTITY_TYPES: EntityType[] = [
   "HumanUser", "Project", "SubProject", "Phase", "Asset", "Task", "Step", "Estimation", "Category"
@@ -115,6 +117,7 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
   const [editTarget, setEditTarget] = useState<FlowEntity | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<FlowEntity | null>(null);
+  const {formProps, openForm} = useDynamicForm();
 
   const allEntities = getList(entityType);
 
@@ -142,43 +145,28 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
     }
   };
 
-  // 編集フォームのフィールド定義
-  const editFields = useMemo(
-    () => buildFieldDefs(columns, editTarget ?? undefined),
-    [columns, editTarget]
-  );
-
-  // 追加フォームのフィールド定義（既存エンティティのキーを参考に）
-  const addFields = useMemo(
-    () => buildFieldDefs(columns, allEntities[0]),
-    [columns, allEntities]
-  );
-
-  // 編集フォームのデフォルト値
-  const editDefaultValues = useMemo(() => {
-    if (!editTarget) return {};
-    return Object.fromEntries(
-      Object.entries(editTarget).filter(([k]) => k !== "id" && k !== "type")
-    );
-  }, [editTarget]);
-
-  const handleEditSubmit = useCallback((values: Record<string, unknown>) => {
-    if (!editTarget) return;
-    patch(entityType, editTarget.id, values);
-    setEditTarget(null);
-  }, [editTarget, entityType, patch]);
-
-  const handleAddSubmit = useCallback((values: Record<string, unknown>) => {
-    create(entityType, values);
-    setAddOpen(false);
-  }, [entityType, create]);
-
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
     remove(entityType, deleteTarget.id);
     setDeleteTarget(null);
   }, [deleteTarget, entityType, remove]);
 
+  const handleAdd = useCallback(() => {
+      openForm({
+        title: `${entityType}を追加`,
+        fields: TypedFields[entityType] || buildFieldDefs(columns, allEntities[0]),
+        onSubmit: (values) => create(entityType, values),
+      });
+  }, [columns, allEntities]);
+
+  const handleEdit = useCallback((entity: FlowEntity) => {
+      openForm({
+        title: `${entityType}を編集`,
+        fields: TypedFields[entityType] || buildFieldDefs(columns, entity),
+        onSubmit: (values) => patch(entityType, entity.id, values),
+      });
+  }, [columns]);
+  
   const entityLabel = (e: FlowEntity) =>
     String(e["name"] ?? e["code"] ?? e["content"] ?? e.id);
 
@@ -208,7 +196,7 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
           size="small"
           variant="outlined"
           startIcon={<AddIcon />}
-          onClick={() => setAddOpen(true)}
+          onClick={handleAdd}
         >
           追加
         </Button>
@@ -248,7 +236,7 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
                 {/* 操作ボタン */}
                 <TableCell sx={{ whiteSpace: "nowrap", p: 0.5 }}>
                   <Tooltip title="編集">
-                    <IconButton size="small" onClick={() => setEditTarget(entity)}>
+                    <IconButton size="small" onClick={() => handleEdit(entity)}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -270,23 +258,8 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
       </TableContainer>
 
       {/* 編集フォーム */}
-      <DynamicForm
-        title={`${entityType} を編集 (ID: ${editTarget?.id})`}
-        open={editTarget !== null}
-        onClose={() => setEditTarget(null)}
-        fields={editFields}
-        defaultValues={editDefaultValues}
-        onSubmit={handleEditSubmit}
-      />
-
       {/* 追加フォーム */}
-      <DynamicForm
-        title={`${entityType} を追加`}
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        fields={addFields}
-        onSubmit={handleAddSubmit}
-      />
+      <DynamicForm {...formProps}/>
 
       {/* 削除確認ダイアログ */}
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>

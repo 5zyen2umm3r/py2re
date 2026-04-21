@@ -1,8 +1,9 @@
-import { FieldDef } from "../types/fieldDef";
+import { EntityType } from "../api/entities";
+import { FieldDef, FieldType } from "../types/fieldDef";
 export const HOURS_PER_MONTH = 160;
 export const TaskFields: FieldDef[] = [
-    { name: 'project', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'name', readonly: true },
-    { name: 'entity', label: 'アセット', type: 'entity' as const, entityType: 'Asset' as const, labelField: 'code', readonly: true },
+    { name: 'project', label: 'プロジェクト', type: 'entity' as const, entityType: 'Project' as const, labelField: 'name', required: true },
+    { name: 'entity', label: 'アセット', type: 'entity' as const, entityType: 'Asset' as const, labelField: 'code', required: true },
     { name: 'content', label: 'タスク名', type: 'text' as const, required: true },
     { name: 'start_date', label: '開始日', type: 'date' as const, required: true },
     { name: 'due_date', label: '期限日', type: 'date' as const, required: true },
@@ -19,8 +20,8 @@ export const AssetFields :FieldDef[] = [
 ];
 
 export const EstimationFields : FieldDef[] = [
-    { name: "project",  label: "Project", type: "entity", entityType: "Project", readonly: true },
-    { name: "sg_asset", label: "Asset",   type: "entity", entityType: "Asset",   readonly: true },
+    { name: "project",  label: "Project", type: "entity", entityType: "Project", required: true },
+    { name: "sg_asset", label: "Asset",   type: "entity", entityType: "Asset",   required: true },
     { name: "sg_user", label: "Assign To", type: "entity", entityType: "HumanUser", required: true },
     { name: "sg_month", label: "月", type: "date", required: true },
     {
@@ -31,3 +32,16 @@ export const EstimationFields : FieldDef[] = [
       fromDisplay: (mm: number) => mm * HOURS_PER_MONTH,
     },
 ];
+
+export const TypedFields : Record<EntityType, FieldDef[]|null> = {
+    "Asset": AssetFields,
+    "Task": TaskFields,
+    "Estimation": EstimationFields,
+    "Project": null,
+    "SubProject": null,
+    "Category": null,
+    "HumanUser": null,
+    "Phase": null,
+    "Step": null,
+    "TimeLog": null,
+}

@@ -316,6 +316,7 @@ def sync_entity_type(
     if entity_cfg.get("sync", True) is False:
         return {"skipped": True, "reason": "sync disabled in config"}
 
+    fields = entity_cfg.get("fields", ["id"])
     last_synced = _get_last_synced(entity_type)
     sync_start = datetime.now(timezone.utc)
     datetime_fields = _get_datetime_fields(entity_type, config)
@@ -323,17 +324,14 @@ def sync_entity_type(
     sg_type = entity_cfg.get("type", entity_type)
     filters = _build_filters(entity_cfg, last_synced, full, project_ids)
 
-    remote_entities: list[dict] = sg.find(
-        sg_type, filters, entity_cfg.get("fields", ["id"])
-    )
+    remote_entities: list[dict] = sg.find(sg_type, filters, fields)
     remote_map: dict[int, dict] = {
         e["id"]: _serialize_datetime_fields(e, datetime_fields)
         for e in remote_entities
     }
 
     # 削除検出のローカルスコープ: project_ids 指定時はそのProject配下のみ対象
-    project_field = entity_cfg.get("project_filter_field")
-    if project_ids is not None and project_field:
+    if project_ids is not None and "project" in fields:
         pids_set = set(project_ids)
         local_qs = CachedEntity.objects.filter(entity_type=entity_type)
         local_map: dict[int, CachedEntity] = {

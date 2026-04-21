@@ -162,7 +162,10 @@ export function EstimationTable() {
               if (!est) return;
               openForm({
                 title: "Estimationを編集",
-                fields: EstimationFields,
+                fields: EstimationFields.map(v => 
+                  v.name === "project" || v.name === "entity" ? {...v, readonly: true} :
+                  v
+                ),
                 defaultValues: {
                   project:      (est.project   as FlowEntity)?.id,
                   sg_asset:     (est.sg_asset   as FlowEntity)?.id,
@@ -271,7 +274,10 @@ export function EstimationTable() {
               : undefined;
             openForm({
               title: "Estimationを追加",
-              fields: EstimationFields,
+              fields: EstimationFields.map(v => 
+                v.name === "project" || v.name === "entity" ? {...v, readonly: true} :
+                v
+              ),
               defaultValues: {project: assetProject?.id, sg_asset: asset.id,},
               onSubmit: (values) => {
                 create("Estimation", {

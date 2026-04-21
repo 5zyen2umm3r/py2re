@@ -62,11 +62,11 @@ export function TimeLogPage(): JSX.Element {
     }
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // マウント時に TimeLog をロード
+  /* マウント時に TimeLog をロード
   useEffect(() => {
     load('TimeLog');
   }, [load]);
-
+  */
   // エンティティ取得
   const timeLogs = getList('TimeLog');
   const tasks = getList('Task');
