@@ -336,8 +336,8 @@ def sync_entity_type(
         local_qs = CachedEntity.objects.filter(entity_type=entity_type)
         local_map: dict[int, CachedEntity] = {
             e.flowpt_id: e for e in local_qs
-            if isinstance(e.data.get(project_field), dict)
-            and e.data[project_field].get("id") in pids_set
+            if isinstance(e.data.get("project"), dict)
+            and e.data["project"].get("id") in pids_set
         }
     else:
         local_map = {
