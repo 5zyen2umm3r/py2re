@@ -118,8 +118,9 @@ export function TimeLogPage(): JSX.Element {
       if (!assetRef) return String(task['content'] ?? '');
       const asset = assets.find((a) => a.id === assetRef.id);
       if (!asset) return String(task['content'] ?? '');
-      return `[${String(asset['code'] ?? '')} > ${String(task['content'] ?? '')}]`;
+      return `${String(asset['code'] ?? '')}\n${String(task['content'] ?? '')}`;
     },
+    labelLines: 2,
     onDragStart: (tl, _rowChain, newPosition) => {
       const newTime = barPositionToTime(newPosition, timeCols, minUnit);
       const snappedMin = snapToMinUnit(newTime.getHours() * 60 + newTime.getMinutes(), minUnit);

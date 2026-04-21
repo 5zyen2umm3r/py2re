@@ -28,6 +28,12 @@ export interface BarDef {
   style?: (entity: FlowEntity) => CSSProperties;
   /** バー上で右クリックした際に表示するコンテキストメニュー（省略可） */
   contextMenu?: BarContextMenuDef;
+  /**
+   * バーの表示行数（デフォルト: 1）。
+   * 2以上を指定するとバーの高さが拡張され、label に改行（\n）を含む文字列を
+   * 複数行で表示できる。行の高さもこの値に応じて自動的に拡張される。
+   */
+  labelLines?: number;
 }
 
 export interface ContextMenuDef {

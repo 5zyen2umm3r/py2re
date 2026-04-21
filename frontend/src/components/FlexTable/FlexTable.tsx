@@ -157,12 +157,14 @@ interface BarElementProps {
   containerRef: React.RefObject<HTMLTableRowElement>;
   laneTop: number;
   laneHeight: number;
+  /** このバーの表示行数（BarDef.labelLines、デフォルト 1） */
+  laneLines: number;
   /** BarOverlay の left オフセット（行ヘッダ幅）。ドラッグ位置計算に使用 */
   overlayLeft: number;
   onContextMenu: (e: React.MouseEvent, items: BarContextMenuItem[], entity: FlowEntity, rowChain: unknown[]) => void;
 }
 
-function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef, laneTop, laneHeight, overlayLeft, onContextMenu }: BarElementProps) {
+function BarElement({ entity, barDef, rowChain, colChains, totalColumns, containerRef, laneTop, laneHeight, laneLines, overlayLeft, onContextMenu }: BarElementProps) {
   const [preview, setPreview] = useState<{ start: BarPosition; end: BarPosition } | null>(null);
 
   const { start: baseStart, end: baseEnd } = barDef.position(entity, colChains);
@@ -319,7 +321,9 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
           paddingLeft: barDef.labelStart ? 48 : 4,
           paddingRight: barDef.labelEnd ? 48 : 4,
           fontSize: '0.75rem', color: '#fff',
-          overflow: 'hidden', whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          whiteSpace: laneLines > 1 ? 'pre-line' : 'nowrap',
+          lineHeight: laneLines > 1 ? 1.4 : undefined,
           pointerEvents: 'none', zIndex: 3, position: 'relative',
         }}>
           {barDef.label(entity)}
@@ -350,7 +354,12 @@ function BarElement({ entity, barDef, rowChain, colChains, totalColumns, contain
 
 // ---- BarOverlay ----
 
-const BAR_LANE_HEIGHT = 28; // px per lane
+const BAR_LANE_HEIGHT_BASE = 28; // px per lane (1行分)
+
+/** labelLines に応じたレーン高さを返す */
+function laneHeight(labelLines: number): number {
+  return BAR_LANE_HEIGHT_BASE + Math.max(0, labelLines - 1) * 16;
+}
 
 /** バーの重なりを検出してレーン番号を割り当てる */
 function assignLanes(
@@ -422,6 +431,9 @@ function BarOverlay({
       })
     : allEntities;
 
+  const lines = barDef.labelLines ?? 1;
+  const perLaneHeight = laneHeight(lines);
+
   // 各バーの start/end 値を計算
   const barInfos = filtered.map((entity) => {
     const { start, end } = barDef.position(entity, colChains);
@@ -439,7 +451,7 @@ function BarOverlay({
   }, [laneCount, onLaneCount]);
 
   const dataWidth = rowWidth - headerWidth;
-  const totalHeight = laneCount * BAR_LANE_HEIGHT;
+  const totalHeight = laneCount * perLaneHeight;
 
   let validIdx = 0;
   return (
@@ -450,7 +462,7 @@ function BarOverlay({
       {barInfos.map((info) => {
         if (!info.valid) return null;
         const lane = lanes[validIdx++];
-        const top = lane * BAR_LANE_HEIGHT;
+        const top = lane * perLaneHeight;
         return (
           <BarElement
             key={info.entity.id}
@@ -461,7 +473,8 @@ function BarOverlay({
             totalColumns={totalColumns}
             containerRef={containerRef}
             laneTop={top}
-            laneHeight={BAR_LANE_HEIGHT}
+            laneHeight={perLaneHeight}
+            laneLines={lines}
             overlayLeft={headerWidth}
             onContextMenu={onContextMenu}
           />
@@ -812,7 +825,7 @@ function RowRenderer({
   const hasMenu = menuItems.length > 0;
 
   // バーがある場合は laneCount に応じて行の高さを設定
-  const rowHeight = node.barDef ? laneCount * BAR_LANE_HEIGHT : undefined;
+  const rowHeight = node.barDef ? laneCount * laneHeight(node.barDef.labelLines ?? 1) : undefined;
 
   // グループ先頭（ラベル行なし）の場合は上部に区切り線
   const groupStartSx = node.isGroupStart
