@@ -217,8 +217,9 @@ export function TaskSchedule() {
             openForm({
               title: 'タスクを追加',
               fields: TaskFields.map(
-                  v => (v.name === "task_assignees") ? 
-                    {...v, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)} :
+                  v => 
+                    (v.name === "task_assignees") ? {...v, filter: (user) => (user.projects as FlowEntity[])?.some((p) => p.id === projectId)} :
+                    (v.name === "project" || v.name === "entity") ? {...v, readonly: true} :
                     v
               ),
               defaultValues: { project: projectId , entity: asset?.id, start_date, due_date, sg_work_category: category?.id},

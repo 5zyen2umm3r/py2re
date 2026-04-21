@@ -128,9 +128,9 @@ export function TimeLogPage(): JSX.Element {
       patch('TimeLog', tl.id, { sg_start_time: snapped.toISOString() });
     },
     onDragEnd: (tl, _rowChain, newPosition) => {
-      const newEndTime = barPositionToTime(newPosition, timeCols, minUnit);
-      const startTime = new Date(tl['sg_start_time'] as string);
-      let durationMin = Math.round((newEndTime.getTime() - startTime.getTime()) / 60000);
+      const newEndTime = barPositionToTime(newPosition, timeCols, minUnit).getTime() % (24*60*60*1000);
+      const startTime = new Date(tl['sg_start_time'] as string).getTime() % (24*60*60*1000);
+      let durationMin = Math.round((newEndTime - startTime) / 60000);
       durationMin = snapToMinUnit(durationMin, minUnit);
       if (durationMin < minUnit) durationMin = minUnit;
       patch('TimeLog', tl.id, { duration: durationMin });
