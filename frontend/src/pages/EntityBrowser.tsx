@@ -7,7 +7,7 @@ import React, { useMemo, useState, useCallback } from "react";
 import {
   Box, Tab, Tabs, Typography, TextField, InputAdornment,
   Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, TableSortLabel, Paper, Chip, Tooltip,
+  TableRow, TableSortLabel, TablePagination, Paper, Chip, Tooltip,
   IconButton, Button,
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from "@mui/material";
@@ -114,6 +114,8 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState("id");
   const [sortOrder, setSortOrder] = useState<Order>("asc");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [editTarget, setEditTarget] = useState<FlowEntity | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<FlowEntity | null>(null);
@@ -134,6 +136,11 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
     [filtered, sortCol, sortOrder]
   );
 
+  const paged = useMemo(
+    () => sorted.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [sorted, page, rowsPerPage]
+  );
+
   const columns = useMemo(() => collectColumns(allEntities), [allEntities]);
 
   const handleSort = (col: string) => {
@@ -143,6 +150,7 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
       setSortCol(col);
       setSortOrder("asc");
     }
+    setPage(0);
   };
 
   const handleDeleteConfirm = useCallback(() => {
@@ -178,7 +186,7 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
           size="small"
           placeholder="検索..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -231,7 +239,7 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
                 </TableCell>
               </TableRow>
             )}
-            {sorted.map((entity) => (
+            {paged.map((entity) => (
               <TableRow key={entity.id} hover>
                 {/* 操作ボタン */}
                 <TableCell sx={{ whiteSpace: "nowrap", p: 0.5 }}>
@@ -256,6 +264,19 @@ function EntityTable({ entityType }: { entityType: EntityType }) {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* ページネーション */}
+      <TablePagination
+        component="div"
+        count={filtered.length}
+        page={page}
+        onPageChange={(_, newPage) => setPage(newPage)}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+        rowsPerPageOptions={[10, 25, 50, 100]}
+        labelRowsPerPage="表示件数:"
+        sx={{ flexShrink: 0 }}
+      />
 
       {/* 編集フォーム */}
       {/* 追加フォーム */}
